@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
+import { createOpenAI } from "@ai-sdk/openai"
 import { generateText } from "ai"
 import type { UnifiedSession } from "../../types/unified"
 import { TURTLE_PREFIXES, RDF, PROV, WORLDS } from "./ontology"
@@ -32,6 +33,10 @@ interface ExtractedClaim {
 export interface ExtractFactsOptions {
   /** When set, successful extractions are cached under this directory. */
   cacheDir?: string
+  /** Model provider for extraction ('gemini' | 'openai' | 'ollama') */
+  provider?: "gemini" | "openai" | "ollama"
+  baseUrl?: string
+  model?: string
 }
 
 function sessionContentHash(session: UnifiedSession): string {
@@ -61,7 +66,7 @@ function buildFactExtractionPrompt(session: UnifiedSession): string {
     })
     .join("\n")
 
-  return `You are a knowledge extraction system. Read the conversation and extract every distinct fact, event, preference, relationship, and plan/decision into a JSON array.
+  return `You are a domain-driven knowledge graph extraction system. Read the conversation and extract every distinct fact, event, preference, relationship, and plan/decision into a structured JSON array of knowledge graph assertions.
 
 Conversation Date: ${date}
 Participants: ${speakerA}, ${speakerB}
@@ -72,33 +77,33 @@ ${conversation}
 
 For each extracted item, output a JSON object with these fields:
 - "type": one of "fact", "event", "preference", "relationship", "plan"
-- "subject": who or what (use the person's actual name, e.g. "${speakerA}")
-- "action": what they did, feel, prefer, plan, etc. (verb phrase)
-- "object": the target, thing, or detail
-- "claimText": a single self-contained sentence summarizing this claim (must be understandable without context)
-- "when": (optional) when it happened — resolve relative dates like "yesterday" or "last year" using the Conversation Date
+- "subject": entity name (who or what, e.g. "${speakerA}")
+- "action": direct predicate or action (verb phrase, e.g. "applied for", "works as", "visited")
+- "object": target entity or detail
+- "claimText": a single self-contained sentence summarizing this assertion (must be independently searchable)
+- "when": (optional) resolved absolute date or timeframe using Conversation Date (${date})
 - "where": (optional) location if mentioned
 
 Rules:
-- Extract ONLY from what was explicitly stated
-- Use speakers' actual names ("${speakerA}", "${speakerB}"), never "the user"
-- Resolve all relative dates to absolute dates using the Conversation Date
-- Each claim must be independently understandable
-- Include ALL facts, even minor personal details — more is better than less
-- The "claimText" field is the most important: it should be a complete, searchable sentence
+- Extract ONLY explicitly stated information
+- Use speakers' actual names ("${speakerA}", "${speakerB}"), never generic "the user"
+- Resolve all relative temporal expressions ("yesterday", "last year") relative to ${date}
+- Each claimText MUST be a complete, self-contained searchable sentence
+- Include ALL facts, preferences, medical events, employment details, and timeline updates
 
 Respond with ONLY a JSON array. No markdown fences, no commentary.
 
 Example output:
 [
-  {"type":"event","subject":"${speakerA}","action":"applied to","object":"adoption agencies","claimText":"${speakerA} applied to adoption agencies.","when":"March 15, 2023"},
+  {"type":"event","subject":"${speakerA}","action":"applied for","object":"asylum decision","claimText":"${speakerA} applied for an asylum decision.","when":"March 15, 2022"},
   {"type":"fact","subject":"${speakerB}","action":"works as","object":"a nurse","claimText":"${speakerB} works as a nurse."},
   {"type":"preference","subject":"${speakerA}","action":"enjoys","object":"painting landscapes","claimText":"${speakerA} enjoys painting landscapes."}
 ]`
 }
 
-function escapeTurtle(value: string): string {
-  return value
+function escapeTurtle(value: string | undefined | null): string {
+  if (value === undefined || value === null) return ""
+  return String(value)
     .replace(/\\/g, "\\\\")
     .replace(/"/g, '\\"')
     .replace(/\n/g, "\\n")
@@ -106,9 +111,18 @@ function escapeTurtle(value: string): string {
     .replace(/\t/g, "\\t")
 }
 
+function slugify(text: string): string {
+  return (
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "entity"
+  )
+}
+
 /**
- * Converts extracted claims into RDF Turtle triples linked to their source session.
- * Uses deterministic URIs: urn:claim:{sessionId}/{index}
+ * Converts extracted claims into domain-driven RDF Turtle quads linked to their source session.
+ * Constructs direct entity nodes, predicate assertions, and PROV-O provenance.
  */
 export function claimsToTurtle(claims: ExtractedClaim[], sessionId: string): string {
   if (claims.length === 0) return ""
@@ -119,22 +133,34 @@ export function claimsToTurtle(claims: ExtractedClaim[], sessionId: string): str
   for (let i = 0; i < claims.length; i++) {
     const c = claims[i]
     const claimUri = `urn:claim:${sessionId}/${i}`
+    const subjectSlug = slugify(c.subject)
+    const entityUri = `urn:entity:${sessionId}/${subjectSlug}`
     const typeIri = CLAIM_TYPE_MAP[c.type] || WORLDS.Claim
 
     lines.push(
+      `# Entity & Claim Assertions for ${c.subject}`,
+      `<${entityUri}> <${RDF.type}> <${SCHEMA.Person}> .`,
+      `<${entityUri}> <${SCHEMA.name}> "${escapeTurtle(c.subject)}" .`,
       `<${claimUri}> <${RDF.type}> <${typeIri}> .`,
       `<${claimUri}> <${RDF.type}> <${WORLDS.Claim}> .`,
       `<${claimUri}> <${WORLDS.claimSubject}> "${escapeTurtle(c.subject)}" .`,
       `<${claimUri}> <${WORLDS.claimAction}> "${escapeTurtle(c.action)}" .`,
       `<${claimUri}> <${WORLDS.claimObject}> "${escapeTurtle(c.object)}" .`,
       `<${claimUri}> <${WORLDS.claimText}> "${escapeTurtle(c.claimText)}" .`,
+      `<${claimUri}> <${SCHEMA.about}> <${entityUri}> .`,
       `<${claimUri}> <${PROV.wasDerivedFrom}> <${sessionUri}> .`
     )
     if (c.when) {
-      lines.push(`<${claimUri}> <${WORLDS.claimWhen}> "${escapeTurtle(c.when)}" .`)
+      lines.push(
+        `<${claimUri}> <${WORLDS.claimWhen}> "${escapeTurtle(c.when)}" .`,
+        `<${claimUri}> <${SCHEMA.startDate}> "${escapeTurtle(c.when)}" .`
+      )
     }
     if (c.where) {
-      lines.push(`<${claimUri}> <${WORLDS.claimWhere}> "${escapeTurtle(c.where)}" .`)
+      lines.push(
+        `<${claimUri}> <${WORLDS.claimWhere}> "${escapeTurtle(c.where)}" .`,
+        `<${claimUri}> <${SCHEMA.location}> "${escapeTurtle(c.where)}" .`
+      )
     }
     lines.push("")
   }
@@ -146,15 +172,31 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function generateExtractionJson(apiKey: string, session: UnifiedSession): Promise<string> {
+async function generateExtractionJson(
+  apiKey: string,
+  session: UnifiedSession,
+  options?: ExtractFactsOptions
+): Promise<string> {
   const prompt = buildFactExtractionPrompt(session)
-  const google = createGoogleGenerativeAI({ apiKey })
+  const isOllamaOrOpenAI =
+    options?.provider === "ollama" ||
+    options?.provider === "openai" ||
+    options?.baseUrl ||
+    process.env.OPENAI_BASE_URL ||
+    !apiKey
+
+  const modelInstance = isOllamaOrOpenAI
+    ? createOpenAI({
+        apiKey: apiKey || process.env.OPENAI_API_KEY || "ollama",
+        baseURL: options?.baseUrl || process.env.OPENAI_BASE_URL || "http://localhost:11434/v1",
+      })(options?.model || process.env.EXTRACTION_MODEL || "qwen2.5-coder:7b")
+    : createGoogleGenerativeAI({ apiKey })(options?.model || EXTRACTION_MODEL)
 
   let lastErr: unknown
   for (let attempt = 0; attempt < EXTRACTION_MAX_RETRIES; attempt++) {
     try {
       const { text } = await generateText({
-        model: google(EXTRACTION_MODEL),
+        model: modelInstance,
         prompt,
         maxTokens: 4000,
         temperature: 0,
@@ -173,7 +215,7 @@ async function generateExtractionJson(apiKey: string, session: UnifiedSession): 
 }
 
 /**
- * Extracts structured facts from a conversation session using Gemini,
+ * Extracts structured facts from a conversation session using Gemini or local Ollama,
  * then converts them to RDF Turtle triples.
  */
 export async function extractFactsToTurtle(
@@ -198,7 +240,7 @@ export async function extractFactsToTurtle(
     }
   }
 
-  const text = await generateExtractionJson(apiKey, session)
+  const text = await generateExtractionJson(apiKey, session, options)
 
   let claims: ExtractedClaim[]
   try {

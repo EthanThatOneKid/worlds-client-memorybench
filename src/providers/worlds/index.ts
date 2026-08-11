@@ -19,6 +19,7 @@ import { WORLDS_PROMPTS } from "./prompts"
 import { TURTLE_PREFIXES, RDF, SCHEMA, PROV, XSD, WORLDS } from "./ontology"
 import { validateGraph } from "./shapes"
 import { GeminiEmbeddingService, GEMINI_EMBEDDING_DIMENSIONS } from "./gemini-embedding-service"
+import { OpenAIEmbeddingService } from "./openai-embedding-service"
 import { extractFactsToTurtle } from "./extraction"
 
 let sharedQueryEngine: QueryEngine | undefined
@@ -70,12 +71,24 @@ export class WorldsProvider implements Provider {
     const dbPath = join(this.baseDir, `${sanitizePath(containerTag)}.db`)
     const libsqlClient = createClient({ url: `file:${dbPath}` })
     const queryEngine = getSharedQueryEngine()
-    const embeddingService = this.apiKey ? new GeminiEmbeddingService(this.apiKey) : undefined
+
+    const useOpenAIOrOllama =
+      Boolean(process.env.OPENAI_BASE_URL) ||
+      process.env.EMBEDDING_PROVIDER === "ollama" ||
+      process.env.EMBEDDING_PROVIDER === "openai" ||
+      !this.apiKey
+
+    const embeddingService = useOpenAIOrOllama
+      ? new OpenAIEmbeddingService()
+      : this.apiKey
+        ? new GeminiEmbeddingService(this.apiKey)
+        : undefined
+
     const client = new Client(
       await createLibsqlClientOptions({
         client: libsqlClient,
         embeddingService,
-        vectorDimensions: embeddingService ? GEMINI_EMBEDDING_DIMENSIONS : undefined,
+        vectorDimensions: embeddingService ? 768 : undefined,
         searchIndexOnImport: false,
         createSparqlEngine: ({ libsqlStore }) =>
           new ComunicaSparqlEngine({ queryEngine, store: libsqlStore }),
@@ -96,19 +109,20 @@ export class WorldsProvider implements Provider {
         source: { kind: "serialized", data: turtle, contentType: "text/turtle" },
       })
 
-      if (this.apiKey) {
-        try {
-          const cacheDir = join(this.baseDir, "claims-cache", sanitizePath(options.containerTag))
-          const factsTurtle = await extractFactsToTurtle(this.apiKey, session, { cacheDir })
-          if (factsTurtle) {
-            await client.import({
-              source: { kind: "serialized", data: factsTurtle, contentType: "text/turtle" },
-            })
-            logger.debug(`Imported extracted facts for session ${session.sessionId}`)
-          }
-        } catch (err) {
-          logger.warn(`Fact extraction failed for ${session.sessionId}, continuing: ${err}`)
+      const cacheDir = join(this.baseDir, "claims-cache", sanitizePath(options.containerTag))
+      try {
+        const factsTurtle = await extractFactsToTurtle(this.apiKey, session, {
+          cacheDir,
+          provider: process.env.OPENAI_BASE_URL ? "ollama" : "gemini",
+        })
+        if (factsTurtle) {
+          await client.import({
+            source: { kind: "serialized", data: factsTurtle, contentType: "text/turtle" },
+          })
+          logger.debug(`Imported extracted facts for session ${session.sessionId}`)
         }
+      } catch (err) {
+        logger.warn(`Fact extraction failed for ${session.sessionId}, continuing: ${err}`)
       }
 
       ids.push(session.sessionId)
@@ -465,6 +479,7 @@ async function runFactClaimSparql(
         OPTIONAL { ?session <${SCHEMA.dateCreated}> ?sessionDate }
       }
       FILTER(?type != <${WORLDS.Claim}>)
+      FILTER NOT EXISTS { ?claim <${WORLDS.status}> <${WORLDS.Superseded}> }
       FILTER( ( ${entityClause} ) && ( ${textClause} ) )
     }
     LIMIT ${limit}

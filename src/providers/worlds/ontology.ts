@@ -75,6 +75,10 @@ export const WORLDS = Object.freeze({
   claimText: "https://worlds.wazoo.dev/ns/memory#claimText",
   claimWhen: "https://worlds.wazoo.dev/ns/memory#claimWhen",
   claimWhere: "https://worlds.wazoo.dev/ns/memory#claimWhere",
+  // Status terms for temporal superseding
+  status: "https://worlds.wazoo.dev/ns/memory#status",
+  Active: "https://worlds.wazoo.dev/ns/memory#Active",
+  Superseded: "https://worlds.wazoo.dev/ns/memory#Superseded",
 } as const)
 
 export const TURTLE_PREFIXES = [
