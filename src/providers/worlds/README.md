@@ -27,17 +27,24 @@ for more stable scores (see `src/judges/google.ts`). File-backed LibSQL database
 | **Answer** | MemoryBench judge layer (unchanged) — configurable LLM via `-j` |
 | **Evaluate** | MemoryBench judge (unchanged) — MemScore reporting |
 
-## Running LoCoMo smoke test
+## Upstream baseline status
+
+This fork tracks upstream [`supermemoryai/memorybench`](https://github.com/supermemoryai/memorybench) `main` (baseline @ `118209a`). Upstream unmerged feature branches (`codex/beam-integration-hardening` and `feat/longmemeval-v2-memorybench`) contain upcoming BEAM and LongMemEval-V2 contracts.
+
+## Running benchmark tests
 
 ```bash
 bun install
 cp .env.example .env.local   # add API keys
 
-# 1. Ingest + index once (builds LibSQL DBs + embedding vectors)
-bun run src/index.ts run -p worlds -b locomo -l 5 -r smoke-001 -j gemini-2.5-flash -m gemini-2.5-flash
+# 1. Run LoCoMo benchmark (limited sample)
+bun run src/index.ts run -p worlds -b locomo -l 5 -r smoke-locomo-001 -j gemini-2.5-flash -m gemini-2.5-flash
 
-# 2. Iterate on search/answer/evaluate — reuses ingested data, zero re-embedding cost
-bun run src/index.ts run -r smoke-001 -f search -j gemini-2.5-flash -m gemini-2.5-flash
+# 2. Run LongMemEval benchmark
+bun run src/index.ts run -p worlds -b longmemeval -l 5 -r smoke-lme-001 -j gemini-2.5-flash -m gemini-2.5-flash
+
+# 3. Iterate on search/answer/evaluate — reuses ingested data, zero re-embedding cost
+bun run src/index.ts run -r smoke-lme-001 -f search -j gemini-2.5-flash -m gemini-2.5-flash
 ```
 
 Use `-f search` to skip ingest and indexing on subsequent runs. The file-backed
