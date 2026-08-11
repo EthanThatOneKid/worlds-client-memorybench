@@ -5,7 +5,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createOpenAI } from "@ai-sdk/openai"
 import { generateText } from "ai"
 import type { UnifiedSession } from "../../types/unified"
-import { TURTLE_PREFIXES, RDF, PROV, WORLDS } from "./ontology"
+import { TURTLE_PREFIXES, RDF, SCHEMA, PROV, WORLDS } from "./ontology"
 import { logger } from "../../utils/logger"
 
 const EXTRACTION_MODEL = "gemini-2.5-flash"

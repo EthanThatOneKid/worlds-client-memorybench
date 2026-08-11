@@ -35,6 +35,11 @@ export const SCHEMA = Object.freeze({
   author: "http://schema.org/author",
   creator: "http://schema.org/creator",
   hasPart: "http://schema.org/hasPart",
+  Person: "http://schema.org/Person",
+  name: "http://schema.org/name",
+  about: "http://schema.org/about",
+  startDate: "http://schema.org/startDate",
+  location: "http://schema.org/location",
 } as const)
 
 export const PROV = Object.freeze({
