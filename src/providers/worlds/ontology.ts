@@ -35,6 +35,11 @@ export const SCHEMA = Object.freeze({
   author: "http://schema.org/author",
   creator: "http://schema.org/creator",
   hasPart: "http://schema.org/hasPart",
+  Person: "http://schema.org/Person",
+  name: "http://schema.org/name",
+  about: "http://schema.org/about",
+  startDate: "http://schema.org/startDate",
+  location: "http://schema.org/location",
 } as const)
 
 export const PROV = Object.freeze({
@@ -75,6 +80,10 @@ export const WORLDS = Object.freeze({
   claimText: "https://worlds.wazoo.dev/ns/memory#claimText",
   claimWhen: "https://worlds.wazoo.dev/ns/memory#claimWhen",
   claimWhere: "https://worlds.wazoo.dev/ns/memory#claimWhere",
+  // Status terms for temporal superseding
+  status: "https://worlds.wazoo.dev/ns/memory#status",
+  Active: "https://worlds.wazoo.dev/ns/memory#Active",
+  Superseded: "https://worlds.wazoo.dev/ns/memory#Superseded",
 } as const)
 
 export const TURTLE_PREFIXES = [
