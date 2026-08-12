@@ -30,7 +30,10 @@ function getAnsweringModel(modelAlias: string): {
   switch (modelConfig.provider) {
     case "openai":
       return {
-        client: createOpenAI({ apiKey: config.openaiApiKey }),
+        client: createOpenAI({
+          apiKey: config.openaiApiKey || process.env.OPENAI_API_KEY || "ollama",
+          baseURL: process.env.OPENAI_BASE_URL,
+        }),
         modelConfig,
       }
     case "anthropic":
@@ -116,7 +119,7 @@ export async function runAnswerPhase(
 
       try {
         const searchData = JSON.parse(readFileSync(resultFile, "utf8"))
-        const context: unknown[] = searchData.results || []
+        const context: unknown[] = (searchData.results || []).slice(0, 5)
         const questionDate = checkpoint.questions[question.questionId]?.questionDate
 
         const basePrompt = buildAnswerPrompt(question.question, [], questionDate, provider)

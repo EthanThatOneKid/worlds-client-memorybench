@@ -10,8 +10,29 @@ import { validateShaclGraph } from "./shapes"
 import { logger } from "../../utils/logger"
 
 const EXTRACTION_MODEL = "gemini-2.5-flash"
-const EXTRACTION_MAX_RETRIES = 4
-const EXTRACTION_BASE_DELAY_MS = 1500
+const EXTRACTION_MAX_RETRIES = 6
+const EXTRACTION_BASE_DELAY_MS = 4000
+
+const GEMINI_QUOTA_WINDOW_MS = 60_000
+const GEMINI_MAX_RPM = 18 // Keep under 20 RPM free tier cap
+const geminiTimestamps: number[] = []
+
+async function waitForGeminiQuota(): Promise<void> {
+  const now = Date.now()
+  while (geminiTimestamps.length > 0 && geminiTimestamps[0] < now - GEMINI_QUOTA_WINDOW_MS) {
+    geminiTimestamps.shift()
+  }
+  if (geminiTimestamps.length >= GEMINI_MAX_RPM) {
+    const oldest = geminiTimestamps[0] ?? now
+    const waitMs = oldest + GEMINI_QUOTA_WINDOW_MS - now + 1000
+    logger.debug(
+      `Gemini rate limiter: ${geminiTimestamps.length}/${GEMINI_MAX_RPM} RPM used, pacing ${(waitMs / 1000).toFixed(1)}s`
+    )
+    await new Promise((resolve) => setTimeout(resolve, waitMs))
+    return waitForGeminiQuota()
+  }
+  geminiTimestamps.push(Date.now())
+}
 
 const CLAIM_TYPE_MAP: Record<string, string> = {
   fact: WORLDS.FactClaim,
@@ -182,9 +203,7 @@ async function generateExtractionJson(
   const isOllamaOrOpenAI =
     options?.provider === "ollama" ||
     options?.provider === "openai" ||
-    options?.baseUrl ||
-    process.env.OPENAI_BASE_URL ||
-    !apiKey
+    (options?.provider !== "gemini" && (options?.baseUrl || process.env.OPENAI_BASE_URL || !apiKey))
 
   const modelInstance = isOllamaOrOpenAI
     ? createOpenAI({
@@ -196,6 +215,9 @@ async function generateExtractionJson(
   let lastErr: unknown
   for (let attempt = 0; attempt < EXTRACTION_MAX_RETRIES; attempt++) {
     try {
+      if (!isOllamaOrOpenAI) {
+        await waitForGeminiQuota()
+      }
       const { text } = await generateText({
         model: modelInstance,
         prompt,

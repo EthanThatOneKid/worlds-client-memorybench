@@ -56,21 +56,25 @@ export async function runEvaluatePhase(
       try {
         const searchResults = checkpoint.questions[question.questionId].phases.search.results || []
 
-        const [result, retrievalMetrics] = await Promise.all([
-          judge.evaluate({
-            question: question.question,
-            questionType: question.questionType,
-            groundTruth: question.groundTruth,
-            hypothesis,
-            providerPrompts: provider?.prompts,
-          }),
-          calculateRetrievalMetrics(
+        const result = await judge.evaluate({
+          question: question.question,
+          questionType: question.questionType,
+          groundTruth: question.groundTruth,
+          hypothesis,
+          providerPrompts: provider?.prompts,
+        })
+
+        let retrievalMetrics = undefined
+        try {
+          retrievalMetrics = await calculateRetrievalMetrics(
             judge.getModel(),
             question.question,
             question.groundTruth,
             searchResults
-          ),
-        ])
+          )
+        } catch (err) {
+          logger.warn(`Retrieval metrics evaluation failed: ${err}`)
+        }
 
         const durationMs = Date.now() - startTime
         checkpointManager.updatePhase(checkpoint, question.questionId, "evaluate", {

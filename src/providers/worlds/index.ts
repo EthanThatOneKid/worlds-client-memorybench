@@ -110,19 +110,24 @@ export class WorldsProvider implements Provider {
       })
 
       const cacheDir = join(this.baseDir, "claims-cache", sanitizePath(options.containerTag))
-      try {
-        const factsTurtle = await extractFactsToTurtle(this.apiKey, session, {
-          cacheDir,
-          provider: process.env.OPENAI_BASE_URL ? "ollama" : "gemini",
-        })
-        if (factsTurtle) {
-          await client.import({
-            source: { kind: "serialized", data: factsTurtle, contentType: "text/turtle" },
+      if (process.env.EXTRACTION_PROVIDER !== "none") {
+        try {
+          const extractionProvider =
+            (process.env.EXTRACTION_PROVIDER as "gemini" | "ollama" | "openai") ||
+            (process.env.OPENAI_BASE_URL ? "ollama" : "gemini")
+          const factsTurtle = await extractFactsToTurtle(this.apiKey, session, {
+            cacheDir,
+            provider: extractionProvider,
           })
-          logger.debug(`Imported extracted facts for session ${session.sessionId}`)
+          if (factsTurtle) {
+            await client.import({
+              source: { kind: "serialized", data: factsTurtle, contentType: "text/turtle" },
+            })
+            logger.debug(`Imported extracted facts for session ${session.sessionId}`)
+          }
+        } catch (err) {
+          logger.warn(`Fact extraction failed for ${session.sessionId}, continuing: ${err}`)
         }
-      } catch (err) {
-        logger.warn(`Fact extraction failed for ${session.sessionId}, continuing: ${err}`)
       }
 
       ids.push(session.sessionId)

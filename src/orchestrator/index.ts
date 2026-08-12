@@ -88,7 +88,7 @@ export class Orchestrator {
     } = options
 
     const judgeModelInfo = resolveModel(judgeModel)
-    const judgeName = judgeModelInfo.provider as JudgeName
+    const judgeName = (judgeModel === "local" ? "local" : judgeModelInfo.provider) as JudgeName
 
     logger.info(`Starting MemoryBench run: ${providerName} + ${benchmarkName}`)
     logger.info(`Run ID: ${runId}`)
