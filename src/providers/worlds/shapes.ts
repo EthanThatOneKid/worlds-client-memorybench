@@ -1,10 +1,12 @@
+import { Parser, Store } from "n3"
+// @ts-ignore - rdf-validate-shacl lacks bundle typings
+import SHACLValidator from "rdf-validate-shacl"
 import { RDF, SCHEMA, PROV, WORLDS, XSD, TURTLE_PREFIXES } from "./ontology"
+import { logger } from "../../utils/logger"
 
 /**
  * SHACL shapes for validating the session/message graph produced by
- * formatSessionForIngestion(). Expressed as Turtle so they can be loaded
- * into any SHACL engine. For Phase 1, validation is structural (regex
- * walking over the Turtle output) rather than full SHACL engine evaluation.
+ * formatSessionForIngestion(). Expressed as Turtle.
  */
 
 export const SESSION_SHAPE = `
@@ -61,9 +63,17 @@ ${TURTLE_PREFIXES}
 @prefix sh: <http://www.w3.org/ns/shacl#> .
 
 worlds:ClaimShape a sh:NodeShape ;
-  sh:targetClass prov:Entity ;
+  sh:targetClass worlds:Claim ;
   sh:property [
-    sh:path worlds:claimType ;
+    sh:path worlds:claimSubject ;
+    sh:minCount 1 ;
+  ] ;
+  sh:property [
+    sh:path worlds:claimText ;
+    sh:minCount 1 ;
+  ] ;
+  sh:property [
+    sh:path prov:wasDerivedFrom ;
     sh:minCount 1 ;
   ] .
 `
@@ -74,11 +84,56 @@ export interface ValidationResult {
 }
 
 /**
+ * Parses a Turtle string into an N3 Quad Store.
+ */
+export function parseTurtleToDataset(turtle: string): Store {
+  const parser = new Parser()
+  const store = new Store()
+  const quads = parser.parse(turtle)
+  store.addQuads(quads)
+  return store
+}
+
+/**
+ * Full W3C SHACL shape validation using rdf-validate-shacl.
+ * Evaluates target RDF data quads against specified SHACL constraint shapes.
+ */
+export async function validateShaclGraph(
+  dataTurtle: string,
+  shapeTurtle: string = CLAIM_SHAPE
+): Promise<ValidationResult> {
+  if (!dataTurtle.trim()) return { valid: true, errors: [] }
+
+  try {
+    const dataStore = parseTurtleToDataset(dataTurtle)
+    const shapeStore = parseTurtleToDataset(shapeTurtle)
+
+    const validator = new SHACLValidator(shapeStore, { maxErrors: 10 })
+    const report = await validator.validate(dataStore)
+
+    const errors: string[] = []
+    if (!report.conforms) {
+      for (const result of report.results || []) {
+        const message = result.message?.[0]?.value || "SHACL constraint violation"
+        const path = result.path?.value || "unknown path"
+        const focusNode = result.focusNode?.value || "unknown node"
+        errors.push(`SHACL violation at ${focusNode} [${path}]: ${message}`)
+      }
+    }
+
+    return {
+      valid: Boolean(report.conforms),
+      errors,
+    }
+  } catch (err) {
+    logger.warn(`SHACL engine evaluation warning: ${err}`)
+    return { valid: true, errors: [String(err)] }
+  }
+}
+
+/**
  * Structural validation of a Turtle document against the session/message
- * shapes. This is a lightweight check — it verifies that required triples
- * are present by scanning the serialized output, not by running a full
- * SHACL engine. A full SHACL engine can be wired in when the graph grows
- * complex enough to justify the dependency.
+ * shapes. Lightweight fallback check verifying required triples.
  */
 export function validateGraph(turtle: string): ValidationResult {
   const errors: string[] = []

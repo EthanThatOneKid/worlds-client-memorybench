@@ -6,6 +6,7 @@ import { createOpenAI } from "@ai-sdk/openai"
 import { generateText } from "ai"
 import type { UnifiedSession } from "../../types/unified"
 import { TURTLE_PREFIXES, RDF, SCHEMA, PROV, WORLDS } from "./ontology"
+import { validateShaclGraph } from "./shapes"
 import { logger } from "../../utils/logger"
 
 const EXTRACTION_MODEL = "gemini-2.5-flash"
@@ -268,6 +269,18 @@ export async function extractFactsToTurtle(
   )
 
   const turtle = claimsToTurtle(valid, session.sessionId)
+
+  if (turtle) {
+    const shaclResult = await validateShaclGraph(turtle)
+    if (!shaclResult.valid) {
+      logger.warn(
+        `SHACL Validation Violations for session ${session.sessionId}:\n` +
+          shaclResult.errors.join("\n")
+      )
+    } else {
+      logger.debug(`SHACL Validation Passed for session ${session.sessionId}`)
+    }
+  }
 
   if (cacheFile && turtle) {
     try {
