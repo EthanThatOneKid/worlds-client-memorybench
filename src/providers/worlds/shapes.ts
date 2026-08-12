@@ -65,11 +65,31 @@ ${TURTLE_PREFIXES}
 worlds:ClaimShape a sh:NodeShape ;
   sh:targetClass worlds:Claim ;
   sh:property [
-    sh:path worlds:claimSubject ;
+    sh:path prov:wasDerivedFrom ;
     sh:minCount 1 ;
-  ] ;
+  ] .
+`
+
+export const PERSON_SHAPE = `
+${TURTLE_PREFIXES}
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+worlds:PersonShape a sh:NodeShape ;
+  sh:targetClass schema:Person ;
   sh:property [
-    sh:path worlds:claimText ;
+    sh:path schema:name ;
+    sh:minCount 1 ;
+  ] .
+`
+
+export const EVENT_SHAPE = `
+${TURTLE_PREFIXES}
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+worlds:EventShape a sh:NodeShape ;
+  sh:targetClass schema:Event ;
+  sh:property [
+    sh:path schema:name ;
     sh:minCount 1 ;
   ] ;
   sh:property [
@@ -77,6 +97,24 @@ worlds:ClaimShape a sh:NodeShape ;
     sh:minCount 1 ;
   ] .
 `
+
+export const ACTION_SHAPE = `
+${TURTLE_PREFIXES}
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+worlds:ActionShape a sh:NodeShape ;
+  sh:targetClass schema:Action ;
+  sh:property [
+    sh:path schema:name ;
+    sh:minCount 1 ;
+  ] ;
+  sh:property [
+    sh:path prov:wasDerivedFrom ;
+    sh:minCount 1 ;
+  ] .
+`
+
+export const DOMAINS_SHACL_SHAPE = [CLAIM_SHAPE, PERSON_SHAPE, EVENT_SHAPE, ACTION_SHAPE].join("\n")
 
 export interface ValidationResult {
   valid: boolean
@@ -100,7 +138,7 @@ export function parseTurtleToDataset(turtle: string): Store {
  */
 export async function validateShaclGraph(
   dataTurtle: string,
-  shapeTurtle: string = CLAIM_SHAPE
+  shapeTurtle: string = DOMAINS_SHACL_SHAPE
 ): Promise<ValidationResult> {
   if (!dataTurtle.trim()) return { valid: true, errors: [] }
 

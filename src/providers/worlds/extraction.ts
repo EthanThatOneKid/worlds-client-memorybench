@@ -34,22 +34,31 @@ async function waitForGeminiQuota(): Promise<void> {
   geminiTimestamps.push(Date.now())
 }
 
+import { buildDomainRdfExtractionPrompt } from "../../prompts/extraction"
+
 const CLAIM_TYPE_MAP: Record<string, string> = {
   fact: WORLDS.FactClaim,
   event: WORLDS.EventClaim,
   preference: WORLDS.PreferenceClaim,
   relationship: WORLDS.RelationshipClaim,
   plan: WORLDS.PlanClaim,
+  Person: SCHEMA.Person,
+  Event: SCHEMA.Event,
+  Action: SCHEMA.Action,
+  MedicalCondition: SCHEMA.MedicalCondition,
+  Organization: SCHEMA.Organization,
 }
 
-interface ExtractedClaim {
-  type: string
+export interface ExtractedClaim {
+  domainClass?: string
+  type?: string
   subject: string
-  action: string
-  object: string
+  action?: string
+  object?: string
   claimText: string
   when?: string
   where?: string
+  status?: string
 }
 
 export interface ExtractFactsOptions {
@@ -74,53 +83,7 @@ function sessionContentHash(session: UnifiedSession): string {
 }
 
 function buildFactExtractionPrompt(session: UnifiedSession): string {
-  const speakerA = (session.metadata?.speakerA as string) || "Speaker A"
-  const speakerB = (session.metadata?.speakerB as string) || "Speaker B"
-  const date =
-    (session.metadata?.formattedDate as string) ||
-    (session.metadata?.date as string) ||
-    "Unknown date"
-
-  const conversation = session.messages
-    .map((m) => {
-      const speaker = m.speaker || m.role
-      return `${speaker}: ${m.content}`
-    })
-    .join("\n")
-
-  return `You are a domain-driven knowledge graph extraction system. Read the conversation and extract every distinct fact, event, preference, relationship, and plan/decision into a structured JSON array of knowledge graph assertions.
-
-Conversation Date: ${date}
-Participants: ${speakerA}, ${speakerB}
-
-<conversation>
-${conversation}
-</conversation>
-
-For each extracted item, output a JSON object with these fields:
-- "type": one of "fact", "event", "preference", "relationship", "plan"
-- "subject": entity name (who or what, e.g. "${speakerA}")
-- "action": direct predicate or action (verb phrase, e.g. "applied for", "works as", "visited")
-- "object": target entity or detail
-- "claimText": a single self-contained sentence summarizing this assertion (must be independently searchable)
-- "when": (optional) resolved absolute date or timeframe using Conversation Date (${date})
-- "where": (optional) location if mentioned
-
-Rules:
-- Extract ONLY explicitly stated information
-- Use speakers' actual names ("${speakerA}", "${speakerB}"), never generic "the user"
-- Resolve all relative temporal expressions ("yesterday", "last year") relative to ${date}
-- Each claimText MUST be a complete, self-contained searchable sentence
-- Include ALL facts, preferences, medical events, employment details, and timeline updates
-
-Respond with ONLY a JSON array. No markdown fences, no commentary.
-
-Example output:
-[
-  {"type":"event","subject":"${speakerA}","action":"applied for","object":"asylum decision","claimText":"${speakerA} applied for an asylum decision.","when":"March 15, 2022"},
-  {"type":"fact","subject":"${speakerB}","action":"works as","object":"a nurse","claimText":"${speakerB} works as a nurse."},
-  {"type":"preference","subject":"${speakerA}","action":"enjoys","object":"painting landscapes","claimText":"${speakerA} enjoys painting landscapes."}
-]`
+  return buildDomainRdfExtractionPrompt(session)
 }
 
 function escapeTurtle(value: string | undefined | null): string {
@@ -144,7 +107,8 @@ function slugify(text: string): string {
 
 /**
  * Converts extracted claims into domain-driven RDF Turtle quads linked to their source session.
- * Constructs direct entity nodes, predicate assertions, and PROV-O provenance.
+ * Constructs direct entity nodes (schema:Person, schema:Event, schema:Action, schema:MedicalCondition),
+ * predicate assertions, schema:text summaries, and PROV-O provenance.
  */
 export function claimsToTurtle(claims: ExtractedClaim[], sessionId: string): string {
   if (claims.length === 0) return ""
@@ -154,35 +118,96 @@ export function claimsToTurtle(claims: ExtractedClaim[], sessionId: string): str
 
   for (let i = 0; i < claims.length; i++) {
     const c = claims[i]
-    const claimUri = `urn:claim:${sessionId}/${i}`
+    const domainClass = c.domainClass || c.type || "Fact"
     const subjectSlug = slugify(c.subject)
-    const entityUri = `urn:entity:${sessionId}/${subjectSlug}`
-    const typeIri = CLAIM_TYPE_MAP[c.type] || WORLDS.Claim
+    const personUri = `urn:person:${sessionId}/${subjectSlug}`
 
-    lines.push(
-      `# Entity & Claim Assertions for ${c.subject}`,
-      `<${entityUri}> <${RDF.type}> <${SCHEMA.Person}> .`,
-      `<${entityUri}> <${SCHEMA.name}> "${escapeTurtle(c.subject)}" .`,
-      `<${claimUri}> <${RDF.type}> <${typeIri}> .`,
-      `<${claimUri}> <${RDF.type}> <${WORLDS.Claim}> .`,
-      `<${claimUri}> <${WORLDS.claimSubject}> "${escapeTurtle(c.subject)}" .`,
-      `<${claimUri}> <${WORLDS.claimAction}> "${escapeTurtle(c.action)}" .`,
-      `<${claimUri}> <${WORLDS.claimObject}> "${escapeTurtle(c.object)}" .`,
-      `<${claimUri}> <${WORLDS.claimText}> "${escapeTurtle(c.claimText)}" .`,
-      `<${claimUri}> <${SCHEMA.about}> <${entityUri}> .`,
-      `<${claimUri}> <${PROV.wasDerivedFrom}> <${sessionUri}> .`
-    )
-    if (c.when) {
+    lines.push(`# Assertions for ${c.subject} (${domainClass})`)
+    lines.push(`<${personUri}> <${RDF.type}> <${SCHEMA.Person}> .`)
+    lines.push(`<${personUri}> <${SCHEMA.name}> "${escapeTurtle(c.subject)}" .`)
+
+    if (domainClass === "Event" || c.type === "event") {
+      const eventUri = `urn:event:${sessionId}/${i}`
       lines.push(
-        `<${claimUri}> <${WORLDS.claimWhen}> "${escapeTurtle(c.when)}" .`,
-        `<${claimUri}> <${SCHEMA.startDate}> "${escapeTurtle(c.when)}" .`
+        `<${eventUri}> <${RDF.type}> <${SCHEMA.Event}> .`,
+        `<${eventUri}> <${SCHEMA.name}> "${escapeTurtle(c.claimText)}" .`,
+        `<${eventUri}> <${SCHEMA.about}> <${personUri}> .`,
+        `<${eventUri}> <${SCHEMA.text}> "${escapeTurtle(c.claimText)}" .`,
+        `<${eventUri}> <${WORLDS.claimText}> "${escapeTurtle(c.claimText)}" .`,
+        `<${eventUri}> <${PROV.wasDerivedFrom}> <${sessionUri}> .`
       )
-    }
-    if (c.where) {
+      if (c.status?.toLowerCase() === "postponed") {
+        lines.push(`<${eventUri}> <${SCHEMA.eventStatus}> <${SCHEMA.EventPostponed}> .`)
+      } else if (c.status?.toLowerCase() === "scheduled") {
+        lines.push(`<${eventUri}> <${SCHEMA.eventStatus}> <${SCHEMA.EventScheduled}> .`)
+      }
+      if (c.when) {
+        lines.push(`<${eventUri}> <${SCHEMA.startDate}> "${escapeTurtle(c.when)}" .`)
+      }
+      if (c.where) {
+        lines.push(`<${eventUri}> <${SCHEMA.location}> "${escapeTurtle(c.where)}" .`)
+      }
+    } else if (domainClass === "MedicalCondition") {
+      const condUri = `urn:medical:${sessionId}/${i}`
       lines.push(
-        `<${claimUri}> <${WORLDS.claimWhere}> "${escapeTurtle(c.where)}" .`,
-        `<${claimUri}> <${SCHEMA.location}> "${escapeTurtle(c.where)}" .`
+        `<${condUri}> <${RDF.type}> <${SCHEMA.MedicalCondition}> .`,
+        `<${condUri}> <${SCHEMA.name}> "${escapeTurtle(c.object || c.action || c.claimText)}" .`,
+        `<${condUri}> <${SCHEMA.about}> <${personUri}> .`,
+        `<${condUri}> <${SCHEMA.text}> "${escapeTurtle(c.claimText)}" .`,
+        `<${condUri}> <${WORLDS.claimText}> "${escapeTurtle(c.claimText)}" .`,
+        `<${condUri}> <${PROV.wasDerivedFrom}> <${sessionUri}> .`
       )
+    } else if (domainClass === "Action") {
+      const actionUri = `urn:action:${sessionId}/${i}`
+      lines.push(
+        `<${actionUri}> <${RDF.type}> <${SCHEMA.Action}> .`,
+        `<${actionUri}> <${SCHEMA.name}> "${escapeTurtle(c.action || c.claimText)}" .`,
+        `<${actionUri}> <${SCHEMA.agent}> <${personUri}> .`,
+        `<${actionUri}> <${SCHEMA.text}> "${escapeTurtle(c.claimText)}" .`,
+        `<${actionUri}> <${WORLDS.claimText}> "${escapeTurtle(c.claimText)}" .`,
+        `<${actionUri}> <${PROV.wasDerivedFrom}> <${sessionUri}> .`
+      )
+      if (c.object) {
+        lines.push(`<${actionUri}> <${SCHEMA.object}> "${escapeTurtle(c.object)}" .`)
+      }
+    } else if (
+      domainClass === "Organization" ||
+      (c.action && /works for|employed at|company/i.test(c.action))
+    ) {
+      const orgSlug = slugify(c.object || "organization")
+      const orgUri = `urn:org:${sessionId}/${orgSlug}`
+      lines.push(
+        `<${orgUri}> <${RDF.type}> <${SCHEMA.Organization}> .`,
+        `<${orgUri}> <${SCHEMA.name}> "${escapeTurtle(c.object || "Organization")}" .`,
+        `<${personUri}> <${SCHEMA.worksFor}> <${orgUri}> .`,
+        `<${personUri}> <${SCHEMA.text}> "${escapeTurtle(c.claimText)}" .`,
+        `<${personUri}> <${WORLDS.claimText}> "${escapeTurtle(c.claimText)}" .`,
+        `<${personUri}> <${PROV.wasDerivedFrom}> <${sessionUri}> .`
+      )
+    } else {
+      const claimUri = `urn:claim:${sessionId}/${i}`
+      const typeIri = CLAIM_TYPE_MAP[c.type || domainClass] || WORLDS.Claim
+      lines.push(
+        `<${claimUri}> <${RDF.type}> <${typeIri}> .`,
+        `<${claimUri}> <${RDF.type}> <${WORLDS.Claim}> .`,
+        `<${claimUri}> <${SCHEMA.about}> <${personUri}> .`,
+        `<${claimUri}> <${SCHEMA.text}> "${escapeTurtle(c.claimText)}" .`,
+        `<${claimUri}> <${WORLDS.claimText}> "${escapeTurtle(c.claimText)}" .`,
+        `<${claimUri}> <${WORLDS.claimSubject}> "${escapeTurtle(c.subject)}" .`,
+        `<${claimUri}> <${PROV.wasDerivedFrom}> <${sessionUri}> .`
+      )
+      if (c.action) {
+        lines.push(`<${claimUri}> <${WORLDS.claimAction}> "${escapeTurtle(c.action)}" .`)
+      }
+      if (c.object) {
+        lines.push(`<${claimUri}> <${WORLDS.claimObject}> "${escapeTurtle(c.object)}" .`)
+      }
+      if (c.when) {
+        lines.push(`<${claimUri}> <${SCHEMA.startDate}> "${escapeTurtle(c.when)}" .`)
+      }
+      if (c.where) {
+        lines.push(`<${claimUri}> <${SCHEMA.location}> "${escapeTurtle(c.where)}" .`)
+      }
     }
     lines.push("")
   }

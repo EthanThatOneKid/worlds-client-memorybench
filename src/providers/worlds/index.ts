@@ -471,19 +471,21 @@ async function runFactClaimSparql(
 ): Promise<FactClaimResult[]> {
   const sparql = `
     SELECT ?claim ?claimText ?type ?subj ?action ?obj ?when ?where ?session ?sessionDate WHERE {
-      ?claim <${RDF.type}> <${WORLDS.Claim}> .
-      ?claim <${WORLDS.claimText}> ?claimText .
-      ?claim <${RDF.type}> ?type .
-      ?claim <${WORLDS.claimSubject}> ?subj .
+      ?claim <${PROV.wasDerivedFrom}> ?session .
+      OPTIONAL { ?session <${SCHEMA.dateCreated}> ?sessionDate }
+      { ?claim <${SCHEMA.text}> ?claimText } UNION { ?claim <${WORLDS.claimText}> ?claimText } .
+      OPTIONAL { ?claim <${RDF.type}> ?type }
+      OPTIONAL {
+        ?claim <${SCHEMA.about}> ?aboutNode .
+        OPTIONAL { ?aboutNode <${SCHEMA.name}> ?subj }
+      }
+      OPTIONAL { ?claim <${WORLDS.claimSubject}> ?subj }
       OPTIONAL { ?claim <${WORLDS.claimAction}> ?action }
       OPTIONAL { ?claim <${WORLDS.claimObject}> ?obj }
+      OPTIONAL { ?claim <${SCHEMA.startDate}> ?when }
       OPTIONAL { ?claim <${WORLDS.claimWhen}> ?when }
+      OPTIONAL { ?claim <${SCHEMA.location}> ?where }
       OPTIONAL { ?claim <${WORLDS.claimWhere}> ?where }
-      OPTIONAL {
-        ?claim <${PROV.wasDerivedFrom}> ?session .
-        OPTIONAL { ?session <${SCHEMA.dateCreated}> ?sessionDate }
-      }
-      FILTER(?type != <${WORLDS.Claim}>)
       FILTER NOT EXISTS { ?claim <${WORLDS.status}> <${WORLDS.Superseded}> }
       FILTER( ( ${entityClause} ) && ( ${textClause} ) )
     }
