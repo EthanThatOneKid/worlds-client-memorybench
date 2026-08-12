@@ -119,17 +119,17 @@ Extract each item as a JSON object with these fields:
 - "domainClass": one of "Person", "Event", "Action", "MedicalCondition", "Organization", "Preference", "Relationship", "Fact"
 - "subject": primary entity name (e.g. "${speakerA}", "${speakerB}", "Wazoo Tech")
 - "action": (optional) predicate or verb phrase (e.g. "applied for", "works as", "suffers from", "knows", "enjoys")
-- "object": (optional) target entity, role, or detail
-- "claimText": a single self-contained sentence summarizing this assertion (must be independently searchable)
+- "object": (optional) target entity, role, detail, or duration
+- "claimText": a single self-contained sentence summarizing this assertion (must be independently searchable and include all key entities/dates)
 - "when": (optional) resolved absolute date or timeframe using Conversation Date (${date})
 - "where": (optional) location if mentioned
-- "status": (optional) status of an event or action (e.g. "Postponed", "Scheduled", "Completed")
+- "status": (optional) status of an event or action (e.g. "Postponed", "Scheduled", "Completed", "Superseded")
 
 Rules:
 - Extract ONLY explicitly stated information
-- Use speakers' actual names ("${speakerA}", "${speakerB}"), never generic "the user"
-- Resolve all relative temporal expressions ("yesterday", "last year") relative to ${date}
-- Each claimText MUST be a complete, self-contained searchable sentence
+- Use speakers' actual names ("${speakerA}", "${speakerB}"), never generic "the user" or "the assistant"
+- Resolve all relative temporal expressions ("yesterday", "last year", "over a year") relative to ${date}
+- Each claimText MUST be a complete, self-contained searchable sentence (e.g., "${speakerA} waited over a year for their asylum application to get approved.")
 - Classify real-world entities accurately (e.g., asylum application -> Event, nurse/engineer -> Person/Job, hospital visit -> Event/MedicalCondition)
 
 Respond with ONLY a JSON array. No markdown fences, no commentary.`

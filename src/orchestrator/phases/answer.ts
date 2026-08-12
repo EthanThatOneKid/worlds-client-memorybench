@@ -136,6 +136,7 @@ export async function runAnswerPhase(
           model: client(modelConfig.id),
           prompt,
           maxTokens: modelConfig.defaultMaxTokens,
+          abortSignal: AbortSignal.timeout(600_000),
         }
 
         if (modelConfig.supportsTemperature) {

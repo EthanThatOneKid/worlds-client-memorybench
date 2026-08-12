@@ -140,6 +140,8 @@ export function claimsToTurtle(claims: ExtractedClaim[], sessionId: string): str
         lines.push(`<${eventUri}> <${SCHEMA.eventStatus}> <${SCHEMA.EventPostponed}> .`)
       } else if (c.status?.toLowerCase() === "scheduled") {
         lines.push(`<${eventUri}> <${SCHEMA.eventStatus}> <${SCHEMA.EventScheduled}> .`)
+      } else if (c.status?.toLowerCase() === "superseded") {
+        lines.push(`<${eventUri}> <${WORLDS.status}> <${WORLDS.Superseded}> .`)
       }
       if (c.when) {
         lines.push(`<${eventUri}> <${SCHEMA.startDate}> "${escapeTurtle(c.when)}" .`)
