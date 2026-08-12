@@ -85,3 +85,52 @@ export async function extractMemories(
 
   return text.trim()
 }
+
+/**
+ * Build a prompt that instructs the LLM to extract domain-driven knowledge graph
+ * assertions (schema:Person, schema:Event, schema:Action, schema:MedicalCondition,
+ * schema:Organization, relationships, preferences) from a conversation session.
+ */
+export function buildDomainRdfExtractionPrompt(session: UnifiedSession): string {
+  const speakerA = (session.metadata?.speakerA as string) || "Speaker A"
+  const speakerB = (session.metadata?.speakerB as string) || "Speaker B"
+  const date =
+    (session.metadata?.formattedDate as string) ||
+    (session.metadata?.date as string) ||
+    "Unknown date"
+
+  const conversation = session.messages
+    .map((m) => {
+      const speaker = m.speaker || m.role
+      return `${speaker}: ${m.content}`
+    })
+    .join("\n")
+
+  return `You are a domain-driven knowledge graph extraction system. Read the conversation and extract every distinct entity, event, action, medical condition, job/occupation, preference, and relationship into a structured JSON array.
+
+Conversation Date: ${date}
+Participants: ${speakerA}, ${speakerB}
+
+<conversation>
+${conversation}
+</conversation>
+
+Extract each item as a JSON object with these fields:
+- "domainClass": one of "Person", "Event", "Action", "MedicalCondition", "Organization", "Preference", "Relationship", "Fact"
+- "subject": primary entity name (e.g. "${speakerA}", "${speakerB}", "Wazoo Tech")
+- "action": (optional) predicate or verb phrase (e.g. "applied for", "works as", "suffers from", "knows", "enjoys")
+- "object": (optional) target entity, role, or detail
+- "claimText": a single self-contained sentence summarizing this assertion (must be independently searchable)
+- "when": (optional) resolved absolute date or timeframe using Conversation Date (${date})
+- "where": (optional) location if mentioned
+- "status": (optional) status of an event or action (e.g. "Postponed", "Scheduled", "Completed")
+
+Rules:
+- Extract ONLY explicitly stated information
+- Use speakers' actual names ("${speakerA}", "${speakerB}"), never generic "the user"
+- Resolve all relative temporal expressions ("yesterday", "last year") relative to ${date}
+- Each claimText MUST be a complete, self-contained searchable sentence
+- Classify real-world entities accurately (e.g., asylum application -> Event, nurse/engineer -> Person/Job, hospital visit -> Event/MedicalCondition)
+
+Respond with ONLY a JSON array. No markdown fences, no commentary.`
+}
