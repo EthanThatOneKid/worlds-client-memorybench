@@ -469,7 +469,8 @@ async function runFactClaimSparql(
   entityClause: string,
   limit: number
 ): Promise<FactClaimResult[]> {
-  const sparql = `SELECT DISTINCT ?claim ?claimText ?type ?subj ?action ?obj ?when ?where ?session ?sessionDate WHERE {
+  const sparql =
+    `SELECT DISTINCT ?claim ?claimText ?type ?subj ?action ?obj ?when ?where ?session ?sessionDate WHERE {
     ?claim <${PROV.wasDerivedFrom}> ?session .
     OPTIONAL { ?session <${SCHEMA.dateCreated}> ?sessionDate }
     { ?claim <${SCHEMA.text}> ?claimText } UNION { ?claim <${WORLDS.claimText}> ?claimText } .
