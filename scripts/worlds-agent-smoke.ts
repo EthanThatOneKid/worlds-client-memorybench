@@ -26,11 +26,38 @@ const SYSTEM_PROMPT = `You answer questions about a long conversation stored in 
 
 Tool order:
 1. worlds_search — default first step. Use short keywords and proper names, not full sentences.
-2. worlds_sparql — optional. Use when you need structured claim fields (claimSubject, claimText, session dates) or filters search cannot express.
+2. worlds_sparql — use when you need multi-hop domain graph traversal (across entities, organizations, events, actions, medical conditions) or structured SPARQL queries.
+
+SPARQL Graph Schema & Multi-Hop Traversal:
+- Pre-declared Prefixes:
+  schema: <http://schema.org/>
+  prov: <http://www.w3.org/ns/prov#>
+  worlds: <https://worlds.wazoo.dev/ns/memory#>
+  rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+  rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+- Key Domain Entity Classes & Predicates:
+  schema:Person — schema:name, schema:knows, schema:worksFor, schema:hasOccupation, prov:wasDerivedFrom
+  schema:Organization — schema:name
+  schema:Event — schema:name, schema:about, schema:text, schema:eventStatus (schema:EventPostponed, schema:EventScheduled), schema:startDate, schema:location, prov:wasDerivedFrom
+  schema:Action — schema:name, schema:agent, schema:object, schema:text, prov:wasDerivedFrom
+  schema:MedicalCondition — schema:name, schema:about, schema:text, prov:wasDerivedFrom
+  worlds:Claim — worlds:claimSubject, worlds:claimAction, worlds:claimObject, worlds:claimText, schema:about, prov:wasDerivedFrom
+
+- Multi-Hop SPARQL Query Examples:
+  * Person-to-Organization employment:
+    SELECT ?personName ?orgName WHERE { ?p a schema:Person ; schema:name ?personName ; schema:worksFor ?org . ?org schema:name ?orgName . }
+  * Inter-Person relationships:
+    SELECT ?p1Name ?p2Name WHERE { ?p1 a schema:Person ; schema:name ?p1Name ; schema:knows ?p2 . ?p2 schema:name ?p2Name . }
+  * Events & Actions about a Person:
+    SELECT ?personName ?eventName ?status ?date WHERE { ?e a schema:Event ; schema:name ?eventName ; schema:about ?p . ?p schema:name ?personName . OPTIONAL { ?e schema:eventStatus ?status } OPTIONAL { ?e schema:startDate ?date } }
+  * Claims & Medical Conditions about an Entity:
+    SELECT ?entityName ?claimText WHERE { ?c a worlds:Claim ; worlds:claimText ?claimText ; schema:about ?e . ?e schema:name ?entityName . }
 
 Rules:
 - Use Session Date on results for temporal questions.
 - Cite evidence from tool results; do not invent facts.
+- Always include LIMIT (≤ 20) in SPARQL SELECT queries.
 - When you have enough evidence, answer concisely in plain text (no tool calls).`
 
 type TraceRecord = {
@@ -78,7 +105,7 @@ function createTools(
     worlds_search: tool({
       description:
         "Hybrid keyword + vector search over conversation messages. Use first. " +
-        "Query: short keywords and person names (e.g. \"Caroline LGBTQ support group\"). " +
+        'Query: short keywords and person names (e.g. "Caroline LGBTQ support group"). ' +
         "Returns messages with Session Date, Speaker, and relevance score when available.",
       inputSchema: z.object({
         query: z.string().describe("Short search query with names and keywords"),
@@ -93,9 +120,10 @@ function createTools(
     }),
     worlds_sparql: tool({
       description:
-        "Run a read-only SPARQL SELECT on the graph. Use after search when you need structured " +
-        "worlds:FactClaim / worlds:EventClaim rows (claimText, claimSubject, claimAction, claimObject) " +
-        "or session schema:dateCreated. Always include LIMIT (≤ 20). Prefixes are pre-declared in the store.",
+        "Run a read-only SPARQL SELECT query on the RDF graph. Performs multi-hop domain graph traversal over " +
+        "schema:Person, schema:Event, schema:Action, schema:Organization, schema:MedicalCondition, and worlds:Claim nodes " +
+        "using predicates schema:knows, schema:worksFor, schema:about, schema:eventStatus, schema:agent, and prov:wasDerivedFrom. " +
+        "Always include LIMIT (≤ 20). Prefixes schema:, prov:, worlds:, rdf:, rdfs: are pre-declared.",
       inputSchema: z.object({
         query: z.string().describe("SPARQL SELECT query, LIMIT ≤ 20"),
       }),
@@ -118,9 +146,9 @@ function createTools(
   }
 }
 
-async function loadQuestions(limit: number): Promise<
-  Array<{ questionId: string; question: string; groundTruth: string }>
-> {
+async function loadQuestions(
+  limit: number
+): Promise<Array<{ questionId: string; question: string; groundTruth: string }>> {
   const benchmark = new LoCoMoBenchmark()
   await benchmark.load()
   return benchmark
@@ -153,7 +181,9 @@ async function runAgentForQuestion(opts: {
   }
 
   const toolTrace: Record<string, unknown>[] = []
-  const tools = createTools(opts.getClient, opts.provider, opts.containerTag, (e) => toolTrace.push(e))
+  const tools = createTools(opts.getClient, opts.provider, opts.containerTag, (e) =>
+    toolTrace.push(e)
+  )
 
   const google = createGoogleGenerativeAI({ apiKey: opts.apiKey })
 
@@ -196,7 +226,9 @@ async function main() {
   }
 
   if (replayPath) {
-    logger.info(`Replay mode: ${replayPath} (LLM-only re-run not yet wired — use live run to capture traces)`)
+    logger.info(
+      `Replay mode: ${replayPath} (LLM-only re-run not yet wired — use live run to capture traces)`
+    )
     return
   }
 
