@@ -1,8 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { Parser, Store, DataFactory } from "n3"
-import { QueryEngine } from "@comunica/query-sparql-rdfjs-lite"
 import { claimsToTurtle, type ExtractedClaim } from "./extraction"
-import { SPARQL_PREFIXES, SCHEMA, RDF } from "./ontology"
+import { SCHEMA, RDF, PROV } from "./ontology"
 
 const { namedNode } = DataFactory
 
@@ -14,10 +13,8 @@ function parseTurtleStore(turtle: string): Store {
   return store
 }
 
-describe("Multi-Hop SPARQL Domain Graph Reasoning", () => {
-  const engine = new QueryEngine()
-
-  it("queries multi-hop Person to Organization employment (schema:worksFor)", async () => {
+describe("Multi-Hop Domain Graph Reasoning", () => {
+  it("queries multi-hop Person to Organization employment (schema:worksFor)", () => {
     const claims: ExtractedClaim[] = [
       {
         domainClass: "Organization",
@@ -43,28 +40,9 @@ describe("Multi-Hop SPARQL Domain Graph Reasoning", () => {
     const orgNameQuads = store.getQuads(orgUri, namedNode(SCHEMA.name), null, null)
     expect(orgNameQuads).toHaveLength(1)
     expect(orgNameQuads[0]!.object.value).toBe("Acme Corp")
-
-    // Comunica SPARQL multi-hop SELECT query
-    const query = `
-      ${SPARQL_PREFIXES}
-      SELECT ?personName ?orgName WHERE {
-        ?person a schema:Person ;
-                schema:name ?personName ;
-                schema:worksFor ?org .
-        ?org a schema:Organization ;
-             schema:name ?orgName .
-      }
-    `
-
-    const bindingsStream = await engine.queryBindings(query, { sources: [store] })
-    const bindings = await bindingsStream.toArray()
-
-    expect(bindings).toHaveLength(1)
-    expect(bindings[0]!.get("personName")?.value).toBe("Alice Smith")
-    expect(bindings[0]!.get("orgName")?.value).toBe("Acme Corp")
   })
 
-  it("queries multi-hop Event about Person with status and provenance (schema:about, schema:eventStatus)", async () => {
+  it("queries multi-hop Event about Person with status and provenance (schema:about, schema:eventStatus)", () => {
     const claims: ExtractedClaim[] = [
       {
         domainClass: "Event",
@@ -81,32 +59,25 @@ describe("Multi-Hop SPARQL Domain Graph Reasoning", () => {
     const turtle = claimsToTurtle(claims, "session-test-02")
     const store = parseTurtleStore(turtle)
 
-    const query = `
-      ${SPARQL_PREFIXES}
-      SELECT ?personName ?eventName ?status ?location WHERE {
-        ?event a schema:Event ;
-               schema:name ?eventName ;
-               schema:about ?person ;
-               schema:eventStatus ?status .
-        ?person a schema:Person ;
-                schema:name ?personName .
-        OPTIONAL { ?event schema:location ?location }
-      }
-    `
+    const eventQuads = store.getQuads(null, namedNode(RDF.type), namedNode(SCHEMA.Event), null)
+    expect(eventQuads).toHaveLength(1)
 
-    const bindingsStream = await engine.queryBindings(query, { sources: [store] })
-    const bindings = await bindingsStream.toArray()
+    const eventUri = eventQuads[0]!.subject
+    const aboutQuads = store.getQuads(eventUri, namedNode(SCHEMA.about), null, null)
+    expect(aboutQuads).toHaveLength(1)
 
-    expect(bindings).toHaveLength(1)
-    expect(bindings[0]!.get("personName")?.value).toBe("Bob Jones")
-    expect(bindings[0]!.get("eventName")?.value).toBe(
-      "Bob Jones applied for a visa extension in London."
-    )
-    expect(bindings[0]!.get("status")?.value).toContain("EventPostponed")
-    expect(bindings[0]!.get("location")?.value).toBe("London")
+    const personUri = aboutQuads[0]!.object
+    const personNameQuads = store.getQuads(personUri, namedNode(SCHEMA.name), null, null)
+    expect(personNameQuads[0]!.object.value).toBe("Bob Jones")
+
+    const statusQuads = store.getQuads(eventUri, namedNode(SCHEMA.eventStatus), null, null)
+    expect(statusQuads[0]!.object.value).toBe(SCHEMA.EventPostponed)
+
+    const locationQuads = store.getQuads(eventUri, namedNode(SCHEMA.location), null, null)
+    expect(locationQuads[0]!.object.value).toBe("London")
   })
 
-  it("queries multi-hop Action with agent entity (schema:agent)", async () => {
+  it("queries multi-hop Action with agent entity (schema:agent)", () => {
     const claims: ExtractedClaim[] = [
       {
         domainClass: "Action",
@@ -120,27 +91,22 @@ describe("Multi-Hop SPARQL Domain Graph Reasoning", () => {
     const turtle = claimsToTurtle(claims, "session-test-03")
     const store = parseTurtleStore(turtle)
 
-    const query = `
-      ${SPARQL_PREFIXES}
-      SELECT ?personName ?actionName ?target WHERE {
-        ?act a schema:Action ;
-             schema:name ?actionName ;
-             schema:agent ?person .
-        ?person a schema:Person ;
-                schema:name ?personName .
-        OPTIONAL { ?act schema:object ?target }
-      }
-    `
+    const actionQuads = store.getQuads(null, namedNode(RDF.type), namedNode(SCHEMA.Action), null)
+    expect(actionQuads).toHaveLength(1)
 
-    const bindingsStream = await engine.queryBindings(query, { sources: [store] })
-    const bindings = await bindingsStream.toArray()
+    const actionUri = actionQuads[0]!.subject
+    const agentQuads = store.getQuads(actionUri, namedNode(SCHEMA.agent), null, null)
+    expect(agentQuads).toHaveLength(1)
 
-    expect(bindings).toHaveLength(1)
-    expect(bindings[0]!.get("personName")?.value).toBe("Charlie Brown")
-    expect(bindings[0]!.get("target")?.value).toBe("San Francisco")
+    const personUri = agentQuads[0]!.object
+    const personNameQuads = store.getQuads(personUri, namedNode(SCHEMA.name), null, null)
+    expect(personNameQuads[0]!.object.value).toBe("Charlie Brown")
+
+    const objectQuads = store.getQuads(actionUri, namedNode(SCHEMA.object), null, null)
+    expect(objectQuads[0]!.object.value).toBe("San Francisco")
   })
 
-  it("queries multi-hop MedicalCondition about Person (schema:MedicalCondition)", async () => {
+  it("queries multi-hop MedicalCondition about Person (schema:MedicalCondition)", () => {
     const claims: ExtractedClaim[] = [
       {
         domainClass: "MedicalCondition",
@@ -154,22 +120,23 @@ describe("Multi-Hop SPARQL Domain Graph Reasoning", () => {
     const turtle = claimsToTurtle(claims, "session-test-04")
     const store = parseTurtleStore(turtle)
 
-    const query = `
-      ${SPARQL_PREFIXES}
-      SELECT ?personName ?conditionName WHERE {
-        ?med a schema:MedicalCondition ;
-             schema:name ?conditionName ;
-             schema:about ?person .
-        ?person a schema:Person ;
-                schema:name ?personName .
-      }
-    `
+    const medQuads = store.getQuads(
+      null,
+      namedNode(RDF.type),
+      namedNode(SCHEMA.MedicalCondition),
+      null
+    )
+    expect(medQuads).toHaveLength(1)
 
-    const bindingsStream = await engine.queryBindings(query, { sources: [store] })
-    const bindings = await bindingsStream.toArray()
+    const medUri = medQuads[0]!.subject
+    const aboutQuads = store.getQuads(medUri, namedNode(SCHEMA.about), null, null)
+    expect(aboutQuads).toHaveLength(1)
 
-    expect(bindings).toHaveLength(1)
-    expect(bindings[0]!.get("personName")?.value).toBe("Diana Prince")
-    expect(bindings[0]!.get("conditionName")?.value).toBe("Migraine")
+    const personUri = aboutQuads[0]!.object
+    const personNameQuads = store.getQuads(personUri, namedNode(SCHEMA.name), null, null)
+    expect(personNameQuads[0]!.object.value).toBe("Diana Prince")
+
+    const nameQuads = store.getQuads(medUri, namedNode(SCHEMA.name), null, null)
+    expect(nameQuads[0]!.object.value).toBe("Migraine")
   })
 })

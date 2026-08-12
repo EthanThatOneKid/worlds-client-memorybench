@@ -283,17 +283,16 @@ async function enrichSearchResults(
   const msgUris = [...new Set(base.map((r) => r.subject))]
   const valuesClause = msgUris.map((uri) => `<${uri}>`).join(" ")
 
-  const query = `PREFIX prov: <http://www.w3.org/ns/prov#>
-PREFIX schema: <http://schema.org/>
-PREFIX worlds: <https://worlds.wazoo.dev/ns/memory#>
-SELECT ?msg ?date ?speaker ?speakerA ?speakerB WHERE {
-  VALUES ?msg { ${valuesClause} }
-  ?msg prov:wasGeneratedBy ?session .
-  ?session schema:dateCreated ?date .
-  OPTIONAL { ?msg schema:creator ?speaker }
-  OPTIONAL { ?session worlds:speakerA ?speakerA }
-  OPTIONAL { ?session worlds:speakerB ?speakerB }
-}`.trim()
+  const query = `
+    SELECT ?msg ?date ?speaker ?speakerA ?speakerB WHERE {
+      VALUES ?msg { ${valuesClause} }
+      ?msg <${PROV.wasGeneratedBy}> ?session .
+      ?session <${SCHEMA.dateCreated}> ?date .
+      OPTIONAL { ?msg <${SCHEMA.creator}> ?speaker }
+      OPTIONAL { ?session <${WORLDS.speakerA}> ?speakerA }
+      OPTIONAL { ?session <${WORLDS.speakerB}> ?speakerB }
+    }
+  `
 
   try {
     const response = await client.sparql({ query })
@@ -470,30 +469,26 @@ async function runFactClaimSparql(
   entityClause: string,
   limit: number
 ): Promise<FactClaimResult[]> {
-  const sparql = `PREFIX prov: <http://www.w3.org/ns/prov#>
-PREFIX schema: <http://schema.org/>
-PREFIX worlds: <https://worlds.wazoo.dev/ns/memory#>
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-SELECT DISTINCT ?claim ?claimText ?type ?subj ?action ?obj ?when ?where ?session ?sessionDate WHERE {
-  ?claim prov:wasDerivedFrom ?session .
-  OPTIONAL { ?session schema:dateCreated ?sessionDate }
-  { ?claim schema:text ?claimText } UNION { ?claim worlds:claimText ?claimText } .
-  OPTIONAL { ?claim rdf:type ?type }
-  OPTIONAL {
-    ?claim schema:about ?aboutNode .
-    OPTIONAL { ?aboutNode schema:name ?subj }
+  const sparql = `SELECT DISTINCT ?claim ?claimText ?type ?subj ?action ?obj ?when ?where ?session ?sessionDate WHERE {
+    ?claim <${PROV.wasDerivedFrom}> ?session .
+    OPTIONAL { ?session <${SCHEMA.dateCreated}> ?sessionDate }
+    { ?claim <${SCHEMA.text}> ?claimText } UNION { ?claim <${WORLDS.claimText}> ?claimText } .
+    OPTIONAL { ?claim <${RDF.type}> ?type }
+    OPTIONAL {
+      ?claim <${SCHEMA.about}> ?aboutNode .
+      OPTIONAL { ?aboutNode <${SCHEMA.name}> ?subj }
+    }
+    OPTIONAL { ?claim <${WORLDS.claimSubject}> ?subj }
+    OPTIONAL { ?claim <${WORLDS.claimAction}> ?action }
+    OPTIONAL { ?claim <${WORLDS.claimObject}> ?obj }
+    OPTIONAL { ?claim <${SCHEMA.startDate}> ?when }
+    OPTIONAL { ?claim <${WORLDS.claimWhen}> ?when }
+    OPTIONAL { ?claim <${SCHEMA.location}> ?where }
+    OPTIONAL { ?claim <${WORLDS.claimWhere}> ?where }
+    FILTER NOT EXISTS { ?claim <${WORLDS.status}> <${WORLDS.Superseded}> }
+    FILTER( ( ${entityClause} ) && ( ${textClause} ) )
   }
-  OPTIONAL { ?claim worlds:claimSubject ?subj }
-  OPTIONAL { ?claim worlds:claimAction ?action }
-  OPTIONAL { ?claim worlds:claimObject ?obj }
-  OPTIONAL { ?claim schema:startDate ?when }
-  OPTIONAL { ?claim worlds:claimWhen ?when }
-  OPTIONAL { ?claim schema:location ?where }
-  OPTIONAL { ?claim worlds:claimWhere ?where }
-  FILTER NOT EXISTS { ?claim worlds:status worlds:Superseded }
-  FILTER( ( ${entityClause} ) && ( ${textClause} ) )
-}
-LIMIT ${limit}`.trim()
+  LIMIT ${limit}`.trim()
 
   try {
     const response = await client.sparql({ query: sparql })
