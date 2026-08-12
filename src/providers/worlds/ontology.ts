@@ -115,3 +115,14 @@ export const TURTLE_PREFIXES = [
   `@prefix skos: <${SKOS._iri}> .`,
   `@prefix worlds: <${WORLDS._iri}> .`,
 ].join("\n")
+
+export const SPARQL_PREFIXES = [
+  `PREFIX rdf: <${RDF._iri}>`,
+  `PREFIX rdfs: <${RDFS._iri}>`,
+  `PREFIX owl: <${OWL._iri}>`,
+  `PREFIX xsd: <${XSD._iri}>`,
+  `PREFIX schema: <${SCHEMA._iri}>`,
+  `PREFIX prov: <${PROV._iri}>`,
+  `PREFIX skos: <${SKOS._iri}>`,
+  `PREFIX worlds: <${WORLDS._iri}>`,
+].join("\n")
