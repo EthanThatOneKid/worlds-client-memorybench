@@ -16,6 +16,10 @@ export function countTokens(text: string, modelConfig: ModelConfig): number {
     // char/4 tends to undercount for JSON-heavy content (lots of short tokens
     // like {, ", :) but is reasonable for natural language.
     return Math.ceil(text.length / 4)
+  } else if (provider === "deepseek") {
+    // DeepSeek exposes no client-side tokenizer; cl100k is a close practical
+    // approximation for its BPE vocabulary.
+    return countOpenAITokens(text, modelConfig.id)
   }
 
   return Math.ceil(text.length / 4)

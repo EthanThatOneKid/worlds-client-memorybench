@@ -20,6 +20,7 @@ import { TURTLE_PREFIXES, RDF, SCHEMA, PROV, XSD, WORLDS } from "./ontology"
 import { validateGraph } from "./shapes"
 import { GeminiEmbeddingService, GEMINI_EMBEDDING_DIMENSIONS } from "./gemini-embedding-service"
 import { OpenAIEmbeddingService } from "./openai-embedding-service"
+import { CachedEmbeddingService } from "./cached-embedding-service"
 import { extractFactsToTurtle } from "./extraction"
 
 let sharedQueryEngine: QueryEngine | undefined
@@ -84,10 +85,38 @@ export class WorldsProvider implements Provider {
         ? new GeminiEmbeddingService(this.apiKey)
         : undefined
 
+    // Wrap with a shared content-addressed cache (data/cache/embeddings/,
+    // per #18/#22) so fresh runs re-embed nothing. Label is provider/model
+    // qualified so a model swap misses instead of poisoning, and scoped to
+    // the resolved embedding endpoint so the same provider/model behind a
+    // different base URL (local Ollama vs remote OpenAI-compatible) misses
+    // instead of reusing stale vectors. Gemini's endpoint is fixed, so no
+    // scope is needed for it.
+    const embeddingProvider =
+      process.env.EMBEDDING_PROVIDER ||
+      (process.env.OPENAI_BASE_URL ? "openai" : !this.apiKey ? "ollama" : "gemini")
+    const embeddingModel =
+      embeddingProvider === "gemini"
+        ? "gemini-embedding-2"
+        : process.env.EMBEDDING_MODEL || "nomic-embed-text"
+    const embeddingScope =
+      embeddingProvider === "gemini"
+        ? undefined
+        : process.env.EMBEDDING_BASE_URL ||
+          process.env.OPENAI_BASE_URL ||
+          "http://localhost:11434/v1"
+    const cachedEmbeddingService = embeddingService
+      ? new CachedEmbeddingService(
+          embeddingService,
+          `${embeddingProvider}/${embeddingModel}`,
+          embeddingScope
+        )
+      : undefined
+
     const client = new Client(
       await createLibsqlClientOptions({
         client: libsqlClient,
-        embeddingService,
+        embeddingService: cachedEmbeddingService,
         vectorDimensions: embeddingService ? 768 : undefined,
         searchIndexOnImport: false,
         createSparqlEngine: ({ libsqlStore }) =>
@@ -109,11 +138,14 @@ export class WorldsProvider implements Provider {
         source: { kind: "serialized", data: turtle, contentType: "text/turtle" },
       })
 
-      const cacheDir = join(this.baseDir, "claims-cache", sanitizePath(options.containerTag))
+      // Shared content-addressed extraction cache (per #18/#22): NOT nested
+      // under containerTag, so it survives fresh run IDs. extraction.ts
+      // appends provider/model to the path for model-qualified keys.
+      const cacheDir = join(process.cwd(), "data", "cache", "extraction")
       if (process.env.EXTRACTION_PROVIDER !== "none") {
         try {
           const extractionProvider =
-            (process.env.EXTRACTION_PROVIDER as "gemini" | "ollama" | "openai") ||
+            (process.env.EXTRACTION_PROVIDER as "gemini" | "ollama" | "openai" | "deepseek") ||
             (process.env.OPENAI_BASE_URL ? "ollama" : "gemini")
           const factsTurtle = await extractFactsToTurtle(this.apiKey, session, {
             cacheDir,
@@ -239,8 +271,9 @@ export class WorldsProvider implements Provider {
     this.documentIds.delete(containerTag)
     const dbPath = join(this.baseDir, `${sanitizePath(containerTag)}.db`)
     await rm(dbPath, { force: true })
-    const cachePath = join(this.baseDir, "claims-cache", sanitizePath(containerTag))
-    await rm(cachePath, { recursive: true, force: true })
+    // Note: the shared data/cache/ (embeddings + extraction) is deliberately
+    // untouched here — it is content-addressed and cross-run; reset it with
+    // the `cache-clear` command.
     logger.info(`Cleared Worlds provider state for ${containerTag}`)
   }
 }

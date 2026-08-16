@@ -14,12 +14,18 @@ export class OpenAIJudge implements Judge {
   async initialize(config: JudgeConfig): Promise<void> {
     this.client = createOpenAI({
       apiKey: config.apiKey,
+      baseURL: config.baseUrl,
     })
     const modelAlias = config.model || DEFAULT_JUDGE_MODELS.openai
     this.modelConfig = getModelConfig(modelAlias)
     logger.info(
       `Initialized OpenAI judge with model: ${this.modelConfig.displayName} (${this.modelConfig.id})`
     )
+  }
+
+  /** Subclasses (e.g. DeepSeek) can add providerOptions like thinking toggles. */
+  protected getProviderOptions(): Record<string, unknown> {
+    return {}
   }
 
   async evaluate(input: JudgeInput): Promise<JudgeResult> {
@@ -37,6 +43,11 @@ export class OpenAIJudge implements Judge {
     }
 
     params.maxTokens = this.modelConfig.defaultMaxTokens
+
+    const providerOptions = this.getProviderOptions()
+    if (Object.keys(providerOptions).length > 0) {
+      params.providerOptions = providerOptions
+    }
 
     const { text } = await generateText(params as Parameters<typeof generateText>[0])
 

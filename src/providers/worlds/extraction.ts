@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createOpenAI } from "@ai-sdk/openai"
 import { generateText } from "ai"
@@ -35,6 +35,7 @@ async function waitForGeminiQuota(): Promise<void> {
 }
 
 import { buildDomainRdfExtractionPrompt } from "../../prompts/extraction"
+import { DeepSeekClient } from "../../utils/deepseek-client"
 
 const CLAIM_TYPE_MAP: Record<string, string> = {
   fact: WORLDS.FactClaim,
@@ -64,10 +65,27 @@ export interface ExtractedClaim {
 export interface ExtractFactsOptions {
   /** When set, successful extractions are cached under this directory. */
   cacheDir?: string
-  /** Model provider for extraction ('gemini' | 'openai' | 'ollama') */
-  provider?: "gemini" | "openai" | "ollama"
+  /** Model provider for extraction ('gemini' | 'openai' | 'ollama' | 'deepseek') */
+  provider?: "gemini" | "openai" | "ollama" | "deepseek"
   baseUrl?: string
   model?: string
+}
+
+function resolveExtractionProvider(
+  options?: ExtractFactsOptions
+): "gemini" | "openai" | "ollama" | "deepseek" {
+  if (options?.provider) return options.provider
+  return process.env.OPENAI_BASE_URL ? "ollama" : "gemini"
+}
+
+function resolveExtractionModel(
+  provider: "gemini" | "openai" | "ollama" | "deepseek",
+  options?: ExtractFactsOptions
+): string {
+  if (options?.model) return options.model
+  if (provider === "gemini") return EXTRACTION_MODEL
+  if (provider === "deepseek") return process.env.EXTRACTION_MODEL || "deepseek-v4-flash"
+  return process.env.EXTRACTION_MODEL || "qwen2.5-coder:7b"
 }
 
 function sessionContentHash(session: UnifiedSession): string {
@@ -227,17 +245,52 @@ async function generateExtractionJson(
   options?: ExtractFactsOptions
 ): Promise<string> {
   const prompt = buildFactExtractionPrompt(session)
+  const provider = resolveExtractionProvider(options)
+  const model = resolveExtractionModel(provider, options)
+
+  // DeepSeek extraction goes through the shared raw-fetch DeepSeekClient (not
+  // the AI SDK) for full control: JSON output mode + thinking disabled make
+  // the response deterministic and fast, and the response carries exact usage
+  // telemetry. deepseek-v4-flash is a reasoning model — without
+  // `thinking: {type:"disabled"}` the output budget is consumed by reasoning
+  // tokens and calls run tens of seconds. A missing DEEPSEEK_API_KEY fails
+  // fast in the client.
+  if (provider === "deepseek") {
+    const { text, usage } = await new DeepSeekClient().chatCompletion({
+      model,
+      prompt,
+      maxTokens: 1500,
+      temperature: 0,
+      responseFormat: "json_object",
+      thinking: "disabled",
+    })
+    if (usage) {
+      logger.debug(
+        `DeepSeek extraction usage: ${usage.promptTokens} in / ${usage.completionTokens} out`
+      )
+    }
+    return text
+  }
+
   const isOllamaOrOpenAI =
-    options?.provider === "ollama" ||
-    options?.provider === "openai" ||
-    (options?.provider !== "gemini" && (options?.baseUrl || process.env.OPENAI_BASE_URL || !apiKey))
+    provider === "ollama" ||
+    provider === "openai" ||
+    (provider !== "gemini" &&
+      (options?.baseUrl ||
+        process.env.EXTRACTION_BASE_URL ||
+        process.env.OPENAI_BASE_URL ||
+        !apiKey))
 
   const modelInstance = isOllamaOrOpenAI
     ? createOpenAI({
         apiKey: apiKey || process.env.OPENAI_API_KEY || "ollama",
-        baseURL: options?.baseUrl || process.env.OPENAI_BASE_URL || "http://localhost:11434/v1",
-      })(options?.model || process.env.EXTRACTION_MODEL || "qwen2.5-coder:7b")
-    : createGoogleGenerativeAI({ apiKey })(options?.model || EXTRACTION_MODEL)
+        baseURL:
+          options?.baseUrl ||
+          process.env.EXTRACTION_BASE_URL ||
+          process.env.OPENAI_BASE_URL ||
+          "http://localhost:11434/v1",
+      })(model)
+    : createGoogleGenerativeAI({ apiKey })(model)
 
   let lastErr: unknown
   for (let attempt = 0; attempt < EXTRACTION_MAX_RETRIES; attempt++) {
@@ -275,7 +328,11 @@ export async function extractFactsToTurtle(
 ): Promise<string> {
   const hash = sessionContentHash(session)
   const cacheDir = options?.cacheDir
-  const cacheFile = cacheDir ? join(cacheDir, `${hash}.json`) : undefined
+  // Model-qualified key: {cacheDir}/{provider}/{model}/{hash}.json so a
+  // provider/model swap misses instead of reusing stale extraction output.
+  const provider = resolveExtractionProvider(options)
+  const model = resolveExtractionModel(provider, options)
+  const cacheFile = cacheDir ? join(cacheDir, provider, model, `${hash}.json`) : undefined
 
   if (cacheFile) {
     try {
@@ -309,8 +366,10 @@ export async function extractFactsToTurtle(
     return ""
   }
 
+  // The domain extraction prompt emits "domainClass" (the generic MEMORY
+  // extraction path emits "type"); accept either so claims are not dropped.
   const valid = claims.filter(
-    (c) => c.type && c.subject && c.claimText && typeof c.claimText === "string"
+    (c) => (c.type || c.domainClass) && c.subject && c.claimText && typeof c.claimText === "string"
   )
 
   logger.debug(
@@ -333,7 +392,7 @@ export async function extractFactsToTurtle(
 
   if (cacheFile && turtle) {
     try {
-      await mkdir(cacheDir!, { recursive: true })
+      await mkdir(dirname(cacheFile), { recursive: true })
       await writeFile(cacheFile, JSON.stringify({ hash, turtle }), "utf-8")
     } catch (err) {
       logger.warn(`Failed to write extraction cache for ${session.sessionId}: ${err}`)

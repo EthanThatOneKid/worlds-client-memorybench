@@ -6,6 +6,8 @@ export interface Config {
   openaiApiKey: string
   anthropicApiKey: string
   googleApiKey: string
+  deepseekApiKey: string
+  deepseekBaseUrl: string
 }
 
 export const config: Config = {
@@ -16,6 +18,8 @@ export const config: Config = {
   openaiApiKey: process.env.OPENAI_API_KEY || "",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
   googleApiKey: process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "",
+  deepseekApiKey: process.env.DEEPSEEK_API_KEY || "",
+  deepseekBaseUrl: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com",
 }
 
 export function getProviderConfig(provider: string): { apiKey: string; baseUrl?: string } {
@@ -37,7 +41,11 @@ export function getProviderConfig(provider: string): { apiKey: string; baseUrl?:
   }
 }
 
-export function getJudgeConfig(judge: string): { apiKey: string; model?: string } {
+export function getJudgeConfig(judge: string): {
+  apiKey: string
+  model?: string
+  baseUrl?: string
+} {
   switch (judge) {
     case "openai":
       return { apiKey: config.openaiApiKey }
@@ -45,6 +53,8 @@ export function getJudgeConfig(judge: string): { apiKey: string; model?: string 
       return { apiKey: config.anthropicApiKey }
     case "google":
       return { apiKey: config.googleApiKey }
+    case "deepseek":
+      return { apiKey: config.deepseekApiKey, baseUrl: config.deepseekBaseUrl }
     case "local":
       return { apiKey: "local" }
     default:

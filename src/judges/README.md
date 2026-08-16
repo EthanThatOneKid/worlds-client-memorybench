@@ -10,7 +10,7 @@ interface Judge {
     initialize(config: JudgeConfig): Promise<void>
     evaluate(input: JudgeInput): Promise<JudgeResult>
     getPromptForQuestionType(questionType: string, providerPrompts?: ProviderPrompts): string
-    getModel(): LanguageModel
+    getModel(): LanguageModel | null
 }
 ```
 
@@ -26,7 +26,7 @@ interface Judge {
 - `initialize()` - Set up client with API key and model
 - `evaluate()` - Return `{ score: 0|1, label: "correct"|"incorrect", explanation: string }`
 - `getPromptForQuestionType()` - Return prompt string for question type
-- `getModel()` - Return the initialized LanguageModel
+- `getModel()` - Return the initialized LanguageModel, or `null` for judges that talk to their provider through a non-SDK client (e.g. DeepSeek's raw-fetch client). Retrieval-metrics evaluation skips when null.
 
 **Use these helpers from `./base.ts`:**
 - `buildJudgePrompt(input)` - Builds full prompt from JudgeInput
@@ -59,3 +59,4 @@ Providers can override judge prompts. See [providers/README.md](../providers/REA
 | `openai` | `@ai-sdk/openai` | gpt-4o |
 | `anthropic` | `@ai-sdk/anthropic` | sonnet-4 |
 | `google` | `@ai-sdk/google` | gemini-2.5-flash |
+| `deepseek` | raw-fetch `DeepSeekClient` (`src/utils/deepseek-client.ts`) | deepseek-v4-flash |

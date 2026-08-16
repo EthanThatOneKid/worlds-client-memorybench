@@ -7,6 +7,7 @@ import { statusCommand } from "./commands/status"
 import { listQuestionsCommand } from "./commands/list-questions"
 import { showFailuresCommand } from "./commands/show-failures"
 import { serveCommand } from "./commands/serve"
+import { cacheClearCommand } from "./commands/cache-clear"
 import { getAvailableProviders } from "../providers"
 import { getAvailableBenchmarks } from "../benchmarks"
 import { listModelsByProvider, MODEL_ALIASES, DEFAULT_ANSWERING_MODEL } from "../utils/models"
@@ -27,6 +28,7 @@ Commands:
   show-failures   Show failed questions from a run with full debugging data
   status          Check run status
   serve           Start the web UI server
+  cache-clear     Clear the shared embedding/extraction cache (data/cache/)
   help            Show help (use 'help providers', 'help models', 'help benchmarks' for details)
 
 Examples:
@@ -95,6 +97,7 @@ function printModelsHelp(): void {
   const openaiModels = listModelsByProvider("openai")
   const anthropicModels = listModelsByProvider("anthropic")
   const googleModels = listModelsByProvider("google")
+  const deepseekModels = listModelsByProvider("deepseek")
 
   console.log(`
 Available Models
@@ -122,6 +125,14 @@ Anthropic Models:
 Google Models:
 `)
   for (const alias of googleModels) {
+    const info = MODEL_ALIASES[alias]
+    console.log(`  ${alias.padEnd(20)} ${info.displayName} (${info.id})`)
+  }
+
+  console.log(`
+DeepSeek Models (OpenAI-compatible, requires DEEPSEEK_API_KEY):
+`)
+  for (const alias of deepseekModels) {
     const info = MODEL_ALIASES[alias]
     console.log(`  ${alias.padEnd(20)} ${info.displayName} (${info.id})`)
   }
@@ -194,6 +205,9 @@ export async function cli(args: string[]): Promise<void> {
       break
     case "serve":
       await serveCommand(commandArgs)
+      break
+    case "cache-clear":
+      await cacheClearCommand()
       break
     case "help":
     case "--help":
