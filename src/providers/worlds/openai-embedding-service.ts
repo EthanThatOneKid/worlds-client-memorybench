@@ -17,7 +17,14 @@ export class OpenAIEmbeddingService implements EmbeddingService {
   constructor(options: OpenAIEmbeddingServiceOptions = {}) {
     const openai = createOpenAI({
       apiKey: options.apiKey || process.env.OPENAI_API_KEY || "ollama",
-      baseURL: options.baseUrl || process.env.OPENAI_BASE_URL || "http://localhost:11434/v1",
+      // EMBEDDING_BASE_URL decouples embeddings from OPENAI_BASE_URL, so
+      // pointing OPENAI_BASE_URL at DeepSeek (which has no embedding
+      // endpoint) can never redirect the embedding path.
+      baseURL:
+        options.baseUrl ||
+        process.env.EMBEDDING_BASE_URL ||
+        process.env.OPENAI_BASE_URL ||
+        "http://localhost:11434/v1",
     })
     const modelName = options.modelName || process.env.EMBEDDING_MODEL || "nomic-embed-text"
     this.model = openai.textEmbeddingModel(modelName)

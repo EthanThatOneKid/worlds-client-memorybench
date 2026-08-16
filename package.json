@@ -34,5 +34,10 @@
     "@types/node": "^25.0.0",
     "prettier": "^3.7.4",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "@traqula/parser-sparql-1-2": "1.2.0",
+    "@traqula/algebra-sparql-1-2": "1.2.0",
+    "@traqula/rules-sparql-1-2": "1.2.0"
   }
 }

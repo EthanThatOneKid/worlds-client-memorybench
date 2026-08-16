@@ -46,6 +46,14 @@ function getAnsweringModel(modelAlias: string): {
         client: createGoogleGenerativeAI({ apiKey: config.googleApiKey }),
         modelConfig,
       }
+    case "deepseek":
+      return {
+        client: createOpenAI({
+          apiKey: config.deepseekApiKey,
+          baseURL: config.deepseekBaseUrl,
+        }),
+        modelConfig,
+      }
   }
 }
 
@@ -141,6 +149,12 @@ export async function runAnswerPhase(
 
         if (modelConfig.supportsTemperature) {
           params.temperature = modelConfig.defaultTemperature
+        }
+
+        // deepseek-v4-flash is a reasoning model; disable thinking for
+        // answering so latency and output-token spend stay low.
+        if (modelConfig.provider === "deepseek") {
+          params.providerOptions = { openai: { thinking: { type: "disabled" } } }
         }
 
         const { text } = await generateText(params as Parameters<typeof generateText>[0])

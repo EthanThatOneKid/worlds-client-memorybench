@@ -1,6 +1,6 @@
 export interface ModelConfig {
   id: string
-  provider: "openai" | "anthropic" | "google"
+  provider: "openai" | "anthropic" | "google" | "deepseek"
   displayName: string
   supportsTemperature: boolean
   defaultTemperature: number
@@ -225,6 +225,26 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     maxTokensParam: "maxTokens",
     defaultMaxTokens: 1000,
   },
+
+  // DeepSeek - OpenAI-compatible API via DEEPSEEK_BASE_URL
+  "deepseek-v4-flash": {
+    id: "deepseek-v4-flash",
+    provider: "deepseek",
+    displayName: "DeepSeek V4 Flash",
+    supportsTemperature: true,
+    defaultTemperature: 0,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 1000,
+  },
+  "deepseek-v4-pro": {
+    id: "deepseek-v4-pro",
+    provider: "deepseek",
+    displayName: "DeepSeek V4 Pro (gated on smoke)",
+    supportsTemperature: true,
+    defaultTemperature: 0,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 1000,
+  },
 }
 
 export const DEFAULT_ANSWERING_MODEL = "gpt-4o"
@@ -232,6 +252,7 @@ export const DEFAULT_JUDGE_MODELS: Record<string, string> = {
   openai: "gpt-4o",
   anthropic: "sonnet-4",
   google: "gemini-2.5-flash",
+  deepseek: "deepseek-v4-flash",
 }
 
 export function getModelConfig(alias: string): ModelConfig {
@@ -302,6 +323,17 @@ export function getModelConfig(alias: string): ModelConfig {
       defaultMaxTokens: 1000,
     }
   }
+  if (alias.startsWith("deepseek-")) {
+    return {
+      id: alias,
+      provider: "deepseek",
+      displayName: alias,
+      supportsTemperature: true,
+      defaultTemperature: 0,
+      maxTokensParam: "maxTokens",
+      defaultMaxTokens: 1000,
+    }
+  }
 
   // Default fallback
   return {
@@ -326,7 +358,7 @@ export function getModelId(alias: string): string {
   return getModelConfig(alias).id
 }
 
-export function getModelProvider(alias: string): "openai" | "anthropic" | "google" {
+export function getModelProvider(alias: string): "openai" | "anthropic" | "google" | "deepseek" {
   return getModelConfig(alias).provider
 }
 
@@ -334,7 +366,9 @@ export function listAvailableModels(): string[] {
   return Object.keys(MODEL_CONFIGS)
 }
 
-export function listModelsByProvider(provider: "openai" | "anthropic" | "google"): string[] {
+export function listModelsByProvider(
+  provider: "openai" | "anthropic" | "google" | "deepseek"
+): string[] {
   return Object.entries(MODEL_CONFIGS)
     .filter(([_, config]) => config.provider === provider)
     .map(([alias]) => alias)

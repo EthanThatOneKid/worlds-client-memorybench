@@ -3,6 +3,8 @@ import type { ProviderPrompts } from "./prompts"
 export interface JudgeConfig {
   apiKey: string
   model?: string
+  /** Optional OpenAI-compatible base URL override (e.g. DeepSeek). */
+  baseUrl?: string
 }
 
 export interface JudgeInput {
@@ -30,4 +32,4 @@ export interface Judge {
   getModel(): import("ai").LanguageModel
 }
 
-export type JudgeName = "openai" | "anthropic" | "google" | "local"
+export type JudgeName = "openai" | "anthropic" | "google" | "deepseek" | "local"
