@@ -1,10 +1,9 @@
 import { mkdir, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { createClient } from "@libsql/client"
-import { Client } from "@worlds/client"
-import { ComunicaSparqlEngine } from "@worlds/client/adapters/comunica"
+import { Client, type SparqlEngineInterface, type SparqlResponse } from "@worlds/client"
 import { createLibsqlClientOptions } from "@worlds/client/adapters/libsql"
-import { QueryEngine } from "@comunica/query-sparql-rdfjs-lite"
+import { WazooSparqlEngine } from "@wazoo/sparql-engine"
 import type {
   Provider,
   ProviderConfig,
@@ -23,12 +22,6 @@ import { OpenAIEmbeddingService } from "./openai-embedding-service"
 import { CachedEmbeddingService } from "./cached-embedding-service"
 import { extractFactsToTurtle } from "./extraction"
 
-let sharedQueryEngine: QueryEngine | undefined
-function getSharedQueryEngine(): QueryEngine {
-  if (!sharedQueryEngine) sharedQueryEngine = new QueryEngine()
-  return sharedQueryEngine
-}
-
 /**
  * WorldsProvider implements the Provider interface for @worlds/client.
  *
@@ -37,6 +30,32 @@ function getSharedQueryEngine(): QueryEngine {
  * LibSQL databases so completed ingest/index phases can be reused when a run
  * is resumed.
  */
+/**
+ * Bridges WazooSparqlEngine onto @worlds/client's SparqlEngineInterface.
+ *
+ * The wazoo engine's SparqlResponse is a superset of the client's: it also
+ * returns `kind: "construct"` (plus RDF 1.2 value shapes) which
+ * @worlds/client@0.0.14 predates (the interface was reconciled upstream in
+ * 0.0.19, but that version dropped the libsql adapter, so we stay on 0.0.14
+ * and bridge here). The harness only issues SELECT/ASK — never
+ * CONSTRUCT/DESCRIBE — so the one unsupported kind fails loud instead of
+ * passing an opaque shape through.
+ */
+function createWazooSparqlEngineAdapter(engine: WazooSparqlEngine): SparqlEngineInterface {
+  return {
+    async execute(request) {
+      const response = await engine.execute(request)
+      if (response.kind === "construct") {
+        throw new Error(
+          "WazooSparqlEngine returned a CONSTRUCT result, which @worlds/client's " +
+            "SparqlEngineInterface does not support; the harness never issues CONSTRUCT/DESCRIBE"
+        )
+      }
+      return response as SparqlResponse
+    },
+  }
+}
+
 export class WorldsProvider implements Provider {
   name = "worlds"
   prompts = WORLDS_PROMPTS
@@ -71,7 +90,6 @@ export class WorldsProvider implements Provider {
     await mkdir(this.baseDir, { recursive: true })
     const dbPath = join(this.baseDir, `${sanitizePath(containerTag)}.db`)
     const libsqlClient = createClient({ url: `file:${dbPath}` })
-    const queryEngine = getSharedQueryEngine()
 
     const useOpenAIOrOllama =
       Boolean(process.env.OPENAI_BASE_URL) ||
@@ -119,8 +137,12 @@ export class WorldsProvider implements Provider {
         embeddingService: cachedEmbeddingService,
         vectorDimensions: embeddingService ? 768 : undefined,
         searchIndexOnImport: false,
+        // In-house Wazoo engine over the hexastore-backed LibsqlStore —
+        // replaces the Comunica/traqula closure (which silently broke every
+        // query in #23); W3C-gated 345/345 SPARQL 1.1, 249/249 SPARQL 1.2,
+        // 41/41 RDF 1.2 triple terms (see #25).
         createSparqlEngine: ({ libsqlStore }) =>
-          new ComunicaSparqlEngine({ queryEngine, store: libsqlStore }),
+          createWazooSparqlEngineAdapter(new WazooSparqlEngine({ store: libsqlStore })),
       })
     )
     this.clients.set(containerTag, client)
