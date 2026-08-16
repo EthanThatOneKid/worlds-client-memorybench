@@ -35,6 +35,7 @@ async function waitForGeminiQuota(): Promise<void> {
 }
 
 import { buildDomainRdfExtractionPrompt } from "../../prompts/extraction"
+import { DeepSeekClient } from "../../utils/deepseek-client"
 
 const CLAIM_TYPE_MAP: Record<string, string> = {
   fact: WORLDS.FactClaim,
@@ -247,44 +248,28 @@ async function generateExtractionJson(
   const provider = resolveExtractionProvider(options)
   const model = resolveExtractionModel(provider, options)
 
-  // DeepSeek extraction goes over raw fetch (not the AI SDK) for full control:
-  // JSON output mode + thinking disabled make the response deterministic and
-  // fast, and the response carries exact usage telemetry. deepseek-v4-flash is
-  // a reasoning model — without `thinking: {type:"disabled"}` the output
-  // budget is consumed by reasoning tokens and calls run tens of seconds.
+  // DeepSeek extraction goes through the shared raw-fetch DeepSeekClient (not
+  // the AI SDK) for full control: JSON output mode + thinking disabled make
+  // the response deterministic and fast, and the response carries exact usage
+  // telemetry. deepseek-v4-flash is a reasoning model — without
+  // `thinking: {type:"disabled"}` the output budget is consumed by reasoning
+  // tokens and calls run tens of seconds. A missing DEEPSEEK_API_KEY fails
+  // fast in the client.
   if (provider === "deepseek") {
-    const baseURL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"
-    const apiKey = process.env.DEEPSEEK_API_KEY || ""
-    const resp = await fetch(`${baseURL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 1500,
-        temperature: 0,
-        response_format: { type: "json_object" },
-        thinking: { type: "disabled" },
-      }),
+    const { text, usage } = await new DeepSeekClient().chatCompletion({
+      model,
+      prompt,
+      maxTokens: 1500,
+      temperature: 0,
+      responseFormat: "json_object",
+      thinking: "disabled",
     })
-    if (!resp.ok) {
-      const detail = (await resp.text()).slice(0, 500)
-      throw new Error(`DeepSeek extraction HTTP ${resp.status}: ${detail}`)
-    }
-    const data = (await resp.json()) as {
-      choices?: { message?: { content?: string } }[]
-      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
-    }
-    const usage = data.usage
     if (usage) {
       logger.debug(
-        `DeepSeek extraction usage: ${usage.prompt_tokens} in / ${usage.completion_tokens} out`
+        `DeepSeek extraction usage: ${usage.promptTokens} in / ${usage.completionTokens} out`
       )
     }
-    return data.choices?.[0]?.message?.content ?? ""
+    return text
   }
 
   const isOllamaOrOpenAI =

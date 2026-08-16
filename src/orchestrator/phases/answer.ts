@@ -8,6 +8,7 @@ import type { RunCheckpoint } from "../../types/checkpoint"
 import type { Provider } from "../../types/provider"
 import { CheckpointManager } from "../checkpoint"
 import { config } from "../../utils/config"
+import { DeepSeekClient } from "../../utils/deepseek-client"
 import { logger } from "../../utils/logger"
 import { getModelConfig, ModelConfig, DEFAULT_ANSWERING_MODEL } from "../../utils/models"
 import { buildDefaultAnswerPrompt } from "../../prompts/defaults"
@@ -21,8 +22,10 @@ type LanguageModel =
   | ReturnType<typeof createAnthropic>
   | ReturnType<typeof createGoogleGenerativeAI>
 
+type AnsweringClient = LanguageModel | DeepSeekClient
+
 function getAnsweringModel(modelAlias: string): {
-  client: LanguageModel
+  client: AnsweringClient
   modelConfig: ModelConfig
 } {
   const modelConfig = getModelConfig(modelAlias || DEFAULT_ANSWERING_MODEL)
@@ -47,10 +50,13 @@ function getAnsweringModel(modelAlias: string): {
         modelConfig,
       }
     case "deepseek":
+      // DeepSeek goes through the dedicated raw-fetch client (thinking sent
+      // top-level) rather than the AI SDK, which strips the param. A missing
+      // DEEPSEEK_API_KEY fails fast in the client.
       return {
-        client: createOpenAI({
+        client: new DeepSeekClient({
           apiKey: config.deepseekApiKey,
-          baseURL: config.deepseekBaseUrl,
+          baseUrl: config.deepseekBaseUrl,
         }),
         modelConfig,
       }
@@ -140,24 +146,34 @@ export async function runAnswerPhase(
         // custom prompt functions that transform context (e.g. Zep's XML-like tags).
         const contextTokens = Math.max(0, promptTokens - basePromptTokens)
 
-        const params: Record<string, unknown> = {
-          model: client(modelConfig.id),
-          prompt,
-          maxTokens: modelConfig.defaultMaxTokens,
-          abortSignal: AbortSignal.timeout(600_000),
-        }
-
-        if (modelConfig.supportsTemperature) {
-          params.temperature = modelConfig.defaultTemperature
-        }
-
         // deepseek-v4-flash is a reasoning model; disable thinking for
-        // answering so latency and output-token spend stay low.
-        if (modelConfig.provider === "deepseek") {
-          params.providerOptions = { openai: { thinking: { type: "disabled" } } }
-        }
-
-        const { text } = await generateText(params as Parameters<typeof generateText>[0])
+        // answering so latency and output-token spend stay low. The DeepSeek
+        // client sends `thinking` top-level (the ai-sdk route strips it).
+        const text =
+          modelConfig.provider === "deepseek"
+            ? (
+                await (client as DeepSeekClient).chatCompletion({
+                  model: modelConfig.id,
+                  prompt,
+                  maxTokens: modelConfig.defaultMaxTokens,
+                  temperature: modelConfig.supportsTemperature
+                    ? modelConfig.defaultTemperature
+                    : undefined,
+                  thinking: "disabled",
+                  signal: AbortSignal.timeout(600_000),
+                })
+              ).text
+            : (
+                await generateText({
+                  model: (client as LanguageModel)(modelConfig.id),
+                  prompt,
+                  maxTokens: modelConfig.defaultMaxTokens,
+                  abortSignal: AbortSignal.timeout(600_000),
+                  ...(modelConfig.supportsTemperature
+                    ? { temperature: modelConfig.defaultTemperature }
+                    : {}),
+                } as Parameters<typeof generateText>[0])
+              ).text
 
         const durationMs = Date.now() - startTime
         checkpointManager.updatePhase(checkpoint, question.questionId, "answer", {

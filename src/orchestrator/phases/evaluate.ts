@@ -65,15 +65,18 @@ export async function runEvaluatePhase(
         })
 
         let retrievalMetrics = undefined
-        try {
-          retrievalMetrics = await calculateRetrievalMetrics(
-            judge.getModel(),
-            question.question,
-            question.groundTruth,
-            searchResults
-          )
-        } catch (err) {
-          logger.warn(`Retrieval metrics evaluation failed: ${err}`)
+        const judgeModel = judge.getModel()
+        if (judgeModel) {
+          try {
+            retrievalMetrics = await calculateRetrievalMetrics(
+              judgeModel,
+              question.question,
+              question.groundTruth,
+              searchResults
+            )
+          } catch (err) {
+            logger.warn(`Retrieval metrics evaluation failed: ${err}`)
+          }
         }
 
         const durationMs = Date.now() - startTime

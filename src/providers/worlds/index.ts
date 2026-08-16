@@ -87,7 +87,11 @@ export class WorldsProvider implements Provider {
 
     // Wrap with a shared content-addressed cache (data/cache/embeddings/,
     // per #18/#22) so fresh runs re-embed nothing. Label is provider/model
-    // qualified so a model swap misses instead of poisoning.
+    // qualified so a model swap misses instead of poisoning, and scoped to
+    // the resolved embedding endpoint so the same provider/model behind a
+    // different base URL (local Ollama vs remote OpenAI-compatible) misses
+    // instead of reusing stale vectors. Gemini's endpoint is fixed, so no
+    // scope is needed for it.
     const embeddingProvider =
       process.env.EMBEDDING_PROVIDER ||
       (process.env.OPENAI_BASE_URL ? "openai" : !this.apiKey ? "ollama" : "gemini")
@@ -95,8 +99,18 @@ export class WorldsProvider implements Provider {
       embeddingProvider === "gemini"
         ? "gemini-embedding-2"
         : process.env.EMBEDDING_MODEL || "nomic-embed-text"
+    const embeddingScope =
+      embeddingProvider === "gemini"
+        ? undefined
+        : process.env.EMBEDDING_BASE_URL ||
+          process.env.OPENAI_BASE_URL ||
+          "http://localhost:11434/v1"
     const cachedEmbeddingService = embeddingService
-      ? new CachedEmbeddingService(embeddingService, `${embeddingProvider}/${embeddingModel}`)
+      ? new CachedEmbeddingService(
+          embeddingService,
+          `${embeddingProvider}/${embeddingModel}`,
+          embeddingScope
+        )
       : undefined
 
     const client = new Client(
