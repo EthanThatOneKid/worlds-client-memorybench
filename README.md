@@ -1,3 +1,14 @@
+<p align="center">
+  <a href="https://docs.wazoo.dev">
+    <img src="https://wazoo.dev/assets/wazoo.svg" alt="Wazoo Worlds" width="120" />
+  </a>
+  <br /><br />
+  <em>Pluggable benchmarking framework for memory and context systems.</em>
+  <br /><br />
+  <a href="https://github.com/wazootech/wazoo-memorybench"><img src="https://img.shields.io/badge/GitHub-black?logo=github" alt="GitHub" /></a>
+  <a href="https://deepwiki.com/wazootech/wazoo-memorybench"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
+</p>
+
 # MemoryBench
 
 A pluggable benchmarking framework for evaluating memory and context systems.
