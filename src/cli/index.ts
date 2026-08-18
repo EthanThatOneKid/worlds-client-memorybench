@@ -79,7 +79,7 @@ Available providers for storing and retrieving memories:
                  Extracts memories via LLM, chunks + embeds extracted content, hybrid BM25 + vector search.
                  Requires: OPENAI_API_KEY (for memory extraction via gpt-4o-mini + embeddings)
 
-  worlds         Wazoo Worlds - Graph-backed neuro-symbolic memory store (@worlds/client)
+  worlds         Wazoo Worlds - Graph-backed neuro-symbolic memory store (@worlds/sdk)
                  Stores RDF quads in LibSQL, hybrid vector/FTS5 search + SPARQL fact claims query.
                  Requires: GOOGLE_API_KEY (for Gemini embeddings & claims extraction)
 

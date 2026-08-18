@@ -1,9 +1,8 @@
 import { mkdir, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { createClient } from "@libsql/client"
-import { Client, type SparqlEngineInterface, type SparqlResponse } from "@worlds/client"
-import { createLibsqlClientOptions } from "@worlds/client/adapters/libsql"
-import { WazooSparqlEngine } from "@wazoo/sparql-engine"
+import type { SdkInterface } from "@worlds/sdk"
+import { createLibsqlClient } from "@worlds/libsql"
 import type {
   Provider,
   ProviderConfig,
@@ -23,38 +22,13 @@ import { CachedEmbeddingService } from "./cached-embedding-service"
 import { extractFactsToTurtle } from "./extraction"
 
 /**
- * WorldsProvider implements the Provider interface for @worlds/client.
+ * WorldsProvider implements the Provider interface for @worlds/sdk.
  *
- * @worlds/client is a graph-backed memory store with RDF import, semantic
+ * @worlds/sdk is a graph-backed memory store with RDF import, semantic
  * search, and SPARQL query capabilities. This provider uses file-backed
  * LibSQL databases so completed ingest/index phases can be reused when a run
  * is resumed.
  */
-/**
- * Bridges WazooSparqlEngine onto @worlds/client's SparqlEngineInterface.
- *
- * The wazoo engine's SparqlResponse is a superset of the client's: it also
- * returns `kind: "construct"` (plus RDF 1.2 value shapes) which
- * @worlds/client@0.0.14 predates (the interface was reconciled upstream in
- * 0.0.19, but that version dropped the libsql adapter, so we stay on 0.0.14
- * and bridge here). The harness only issues SELECT/ASK — never
- * CONSTRUCT/DESCRIBE — so the one unsupported kind fails loud instead of
- * passing an opaque shape through.
- */
-function createWazooSparqlEngineAdapter(engine: WazooSparqlEngine): SparqlEngineInterface {
-  return {
-    async execute(request) {
-      const response = await engine.execute(request)
-      if (response.kind === "construct") {
-        throw new Error(
-          "WazooSparqlEngine returned a CONSTRUCT result, which @worlds/client's " +
-            "SparqlEngineInterface does not support; the harness never issues CONSTRUCT/DESCRIBE"
-        )
-      }
-      return response as SparqlResponse
-    },
-  }
-}
 
 export class WorldsProvider implements Provider {
   name = "worlds"
@@ -65,7 +39,7 @@ export class WorldsProvider implements Provider {
     indexing: 2,
   }
 
-  private clients = new Map<string, Client>()
+  private clients = new Map<string, SdkInterface>()
   private documentIds = new Map<string, string[]>()
   private baseDir = join(process.cwd(), "data", "providers", "worlds")
   private apiKey = ""
@@ -79,11 +53,11 @@ export class WorldsProvider implements Provider {
   }
 
   /** Exposed for agent tool-calling scripts that need direct SPARQL access. */
-  async getClientForContainer(containerTag: string): Promise<Client> {
+  async getClientForContainer(containerTag: string): Promise<SdkInterface> {
     return this.getClient(containerTag)
   }
 
-  private async getClient(containerTag: string): Promise<Client> {
+  private async getClient(containerTag: string): Promise<SdkInterface> {
     const existing = this.clients.get(containerTag)
     if (existing) return existing
 
@@ -131,20 +105,17 @@ export class WorldsProvider implements Provider {
         )
       : undefined
 
-    const client = new Client(
-      await createLibsqlClientOptions({
-        client: libsqlClient,
-        embeddingService: cachedEmbeddingService,
-        vectorDimensions: embeddingService ? 768 : undefined,
-        searchIndexOnImport: false,
-        // In-house Wazoo engine over the hexastore-backed LibsqlStore —
-        // replaces the Comunica/traqula closure (which silently broke every
-        // query in #23); W3C-gated 345/345 SPARQL 1.1, 249/249 SPARQL 1.2,
-        // 41/41 RDF 1.2 triple terms (see #25).
-        createSparqlEngine: ({ libsqlStore }) =>
-          createWazooSparqlEngineAdapter(new WazooSparqlEngine({ store: libsqlStore })),
-      })
-    )
+    // createLibsqlClient wires the in-house WazooSparqlEngine over the
+    // hexastore-backed LibsqlStore automatically (the Comunica/traqula
+    // closure silently broke every query in #23; the Wazoo engine is
+    // W3C-gated 345/345 SPARQL 1.1, 249/249 SPARQL 1.2, 41/41 RDF 1.2
+    // triple terms — see #25).
+    const client = await createLibsqlClient({
+      client: libsqlClient,
+      embeddingService: cachedEmbeddingService,
+      vectorDimensions: embeddingService ? 768 : undefined,
+      searchIndexOnImport: "disabled",
+    })
     this.clients.set(containerTag, client)
     return client
   }
@@ -255,7 +226,7 @@ export class WorldsProvider implements Provider {
     onProgress?: IndexingProgressCallback
   ): Promise<void> {
     const client = await this.getClient(containerTag)
-    const indexResult = await client.rebuildSearchIndex()
+    const indexResult = await client.reindex()
     logger.info(
       `Worlds: rebuilt search index for ${containerTag} — ` +
         `${indexResult.processedQuadCount} quads processed, ${indexResult.chunkRowCount} chunk rows`
@@ -300,7 +271,7 @@ export class WorldsProvider implements Provider {
   }
 }
 
-type SearchResponse = Awaited<ReturnType<Client["search"]>>
+type SearchResponse = Awaited<ReturnType<SdkInterface["search"]>>
 type SearchResult = NonNullable<SearchResponse["results"]>[number]
 
 interface EnrichedSearchResult {
@@ -321,7 +292,7 @@ interface EnrichedSearchResult {
  * search result via a single batched SPARQL SELECT query.
  */
 async function enrichSearchResults(
-  client: Client,
+  client: SdkInterface,
   results: SearchResult[]
 ): Promise<EnrichedSearchResult[]> {
   const base: EnrichedSearchResult[] = results.map((r) => ({
@@ -519,7 +490,7 @@ function parseFactBindings(response: unknown): FactClaimResult[] {
 }
 
 async function runFactClaimSparql(
-  client: Client,
+  client: SdkInterface,
   textClause: string,
   entityClause: string,
   limit: number
@@ -560,7 +531,7 @@ async function runFactClaimSparql(
  * subject/action/object/claimText, AND-first on keywords for precision,
  * OR fallback for recall. LIMIT 8 for latency.
  */
-async function queryFactClaims(client: Client, query: string): Promise<FactClaimResult[]> {
+async function queryFactClaims(client: SdkInterface, query: string): Promise<FactClaimResult[]> {
   try {
     const terms = extractContentTerms(query)
     const entities = extractQueryEntities(query)
@@ -593,7 +564,7 @@ async function queryFactClaims(client: Client, query: string): Promise<FactClaim
   }
 }
 
-async function runSearch(client: Client, query: string): Promise<SearchResult[]> {
+async function runSearch(client: SdkInterface, query: string): Promise<SearchResult[]> {
   const response = await client.search({ query })
   return response.results ?? []
 }
@@ -605,7 +576,7 @@ async function runSearch(client: Client, query: string): Promise<SearchResult[]>
  * With embeddings active the primary hybrid search handles most queries
  * directly, but the fallback still catches degraded keyword-only mode.
  */
-async function searchWithFallback(client: Client, query: string): Promise<SearchResult[]> {
+async function searchWithFallback(client: SdkInterface, query: string): Promise<SearchResult[]> {
   const results = await runSearch(client, query)
   if (results.length > 0) {
     logger.debug(`Worlds search: "${query.slice(0, 50)}…" → ${results.length} results`)

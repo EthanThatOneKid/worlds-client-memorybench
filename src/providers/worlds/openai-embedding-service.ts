@@ -1,6 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai"
 import { embedMany } from "ai"
-import type { EmbeddingService } from "@worlds/client/search-index/embedding-service"
+import type { EmbeddingService } from "@worlds/sdk/search-index/embedding-service"
 import { logger } from "../../utils/logger"
 
 export type { EmbeddingService }

@@ -1,6 +1,6 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { embedMany } from "ai"
-import type { EmbeddingService } from "@worlds/client/search-index/embedding-service"
+import type { EmbeddingService } from "@worlds/sdk/search-index/embedding-service"
 import { logger } from "../../utils/logger"
 
 export type { EmbeddingService }
@@ -37,7 +37,7 @@ async function waitForQuota(requestCount: number): Promise<void> {
 }
 
 /**
- * GeminiEmbeddingService implements @worlds/client's EmbeddingService interface
+ * GeminiEmbeddingService implements @worlds/sdk's EmbeddingService interface
  * using Google's gemini-embedding-2 via the Vercel AI SDK.
  *
  * Gemini's BatchEmbedContents API caps at 100 items per request, so we chunk

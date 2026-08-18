@@ -1,6 +1,6 @@
 # Worlds Provider (`-p worlds`)
 
-Adapter for `@worlds/client` (graph-backed memory / RAG provider) in MemoryBench.
+Adapter for `@worlds/sdk` (graph-backed memory / RAG provider) in MemoryBench.
 
 ## Environment variables
 

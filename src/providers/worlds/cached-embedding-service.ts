@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
-import type { EmbeddingService } from "@worlds/client/search-index/embedding-service"
+import type { EmbeddingService } from "@worlds/sdk/search-index/embedding-service"
 import { logger } from "../../utils/logger"
 
 const CACHE_ROOT = join(process.cwd(), "data", "cache", "embeddings")
