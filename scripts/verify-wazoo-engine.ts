@@ -2,7 +2,7 @@
  * Interface-parity + perf verification for the #25 Comunica→Wazoo engine swap.
  *
  * Opens each of the 5 smoke LibSQL DBs (conv-26-q0..q4-smoke-ds-001) through
- * the same `createLibsqlClient` path WorldsProvider uses, runs the
+ * the same `createLibsqlSdk` path WorldsProvider uses, runs the
  * harness's real query surface through the Wazoo engine, asserts the
  * expected shapes/results, and times representative queries for the perf
  * checklist item.
@@ -10,7 +10,7 @@
  * Usage: bun run scripts/verify-wazoo-engine.ts
  */
 import { createClient } from "@libsql/client"
-import { createLibsqlClient } from "@worlds/libsql"
+import { createLibsqlSdk } from "@worlds/libsql"
 import { join } from "node:path"
 
 const DB_DIR = join(process.cwd(), "data", "providers", "worlds")
@@ -74,9 +74,9 @@ async function main(): Promise<void> {
   for (const dbName of DB_NAMES) {
     const dbPath = join(DB_DIR, `${dbName}.db`)
     const libsqlClient = createClient({ url: `file:${dbPath}` })
-    const client = await createLibsqlClient({
+    const client = await createLibsqlSdk({
       client: libsqlClient,
-      // Wazoo engine — the #25 swap under test (wired by createLibsqlClient).
+      // Wazoo engine — the #25 swap under test (wired by createLibsqlSdk).
     })
 
     console.log(`\n=== ${dbName} ===`)

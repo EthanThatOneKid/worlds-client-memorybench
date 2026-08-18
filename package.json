@@ -16,7 +16,7 @@
     "@anthropic-ai/tokenizer": "^0.0.4",
     "@getzep/zep-cloud": "^3.13.0",
     "@types/n3": "^1.26.1",
-    "@worlds/libsql": "npm:@jsr/worlds__libsql@^0.1.0",
+    "@worlds/libsql": "npm:@jsr/worlds__libsql@^0.3.0",
     "@worlds/sdk": "npm:@jsr/worlds__sdk@^0.2.0",
     "ai": "^5.0.115",
     "drizzle-orm": "^0.45.1",
