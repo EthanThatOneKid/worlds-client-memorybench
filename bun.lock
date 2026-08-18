@@ -11,7 +11,7 @@
         "@anthropic-ai/tokenizer": "^0.0.4",
         "@getzep/zep-cloud": "^3.13.0",
         "@types/n3": "^1.26.1",
-        "@worlds/libsql": "npm:@jsr/worlds__libsql@^0.1.0",
+        "@worlds/libsql": "npm:@jsr/worlds__libsql@^0.3.0",
         "@worlds/sdk": "npm:@jsr/worlds__sdk@^0.2.0",
         "ai": "^5.0.115",
         "drizzle-orm": "^0.45.1",
@@ -79,7 +79,7 @@
 
     "@jsr/wazoo__sparql-engine": ["@jsr/wazoo__sparql-engine@0.4.1", "https://npm.jsr.io/~/11/@jsr/wazoo__sparql-engine/0.4.1.tgz", { "dependencies": { "@rdfjs/types": "^2.0.1" } }, "sha512-Cx6fEJnQG3K4m2jv4c/Yi9f1QCt/j+CeJjeoMFW1iIfk+j7/3AJDfe1WSrVbIEQSzyPhxopgO1R0oH8ybWZDhQ=="],
 
-    "@jsr/worlds__sdk": ["@jsr/worlds__sdk@0.2.0", "https://npm.jsr.io/~/11/@jsr/worlds__sdk/0.2.0.tgz", { "dependencies": { "@jsr/std__encoding": "^1.0.10", "@jsr/std__path": "^1.1.5", "@jsr/wazoo__sparql-engine": "^0.4.1", "@rdfjs/types": "^2.0.1", "@tensorflow/tfjs": "^4.22.0", "@tensorflow/tfjs-backend-wasm": "^4.22.0", "ai": "^6.0.195", "rdf-canonize": "^5.0.0" } }, "sha512-k0lpfr+mrHxJKmM8nxjHeO40szG+ASLXUoFXW1C+zg53cxezmS+Qo3i9r2+G+zWGsBgzt6fXwypxnipsm82K+A=="],
+    "@jsr/worlds__sdk": ["@jsr/worlds__sdk@0.2.1", "https://npm.jsr.io/~/11/@jsr/worlds__sdk/0.2.1.tgz", { "dependencies": { "@jsr/std__encoding": "^1.0.10", "@jsr/std__path": "^1.1.5", "@jsr/wazoo__sparql-engine": "^0.4.1", "@rdfjs/types": "^2.0.1", "@tensorflow/tfjs": "^4.22.0", "@tensorflow/tfjs-backend-wasm": "^4.22.0", "ai": "^6.0.195", "rdf-canonize": "^5.0.0" } }, "sha512-6TzQVAtTUMCrbmzNkXJefW7bQ9cbRnW+A4jY5fcrdQfftRuamH1AAnlIqZ8OJg2qKn5h+K6/9iRlnK7Z2Odryw=="],
 
     "@langchain/core": ["@langchain/core@0.3.79", "", { "dependencies": { "@cfworker/json-schema": "^4.0.2", "ansi-styles": "^5.0.0", "camelcase": "6", "decamelize": "1.2.0", "js-tiktoken": "^1.0.12", "langsmith": "^0.3.67", "mustache": "^4.2.0", "p-queue": "^6.6.2", "p-retry": "4", "uuid": "^10.0.0", "zod": "^3.25.32", "zod-to-json-schema": "^3.22.3" } }, "sha512-ZLAs5YMM5N2UXN3kExMglltJrKKoW7hs3KMZFlXUnD7a5DFKBYxPFMeXA4rT+uvTxuJRZPCYX0JKI5BhyAWx4A=="],
 
@@ -245,7 +245,7 @@
 
     "@webgpu/types": ["@webgpu/types@0.1.38", "", {}, "sha512-7LrhVKz2PRh+DD7+S+PVaFd5HxaWQvoMqBbsV9fNJO1pjUs1P8bM2vQVNfk+3URTqbuTI7gkXi0rfsN0IadoBA=="],
 
-    "@worlds/libsql": ["@jsr/worlds__libsql@0.1.0", "https://npm.jsr.io/~/11/@jsr/worlds__libsql/0.1.0.tgz", { "dependencies": { "@jsr/wazoo__sparql-engine": "^0.4.1", "@jsr/worlds__sdk": "^0.2.0", "@langchain/textsplitters": "^1.0.1", "@libsql/client": "^0.17.3", "@rdfjs/types": "^2.0.1" } }, "sha512-cIUWIJPe6FDiOWSKg9Nub7BSNLp+cHD/Phb2CLRq3tkaRq1UwqlEl7OHqZBO6rH/rRQnafAUyrcPyU/9Ty4qZg=="],
+    "@worlds/libsql": ["@jsr/worlds__libsql@0.3.0", "https://npm.jsr.io/~/11/@jsr/worlds__libsql/0.3.0.tgz", { "dependencies": { "@jsr/wazoo__sparql-engine": "^0.4.1", "@jsr/worlds__sdk": "^0.2.1", "@langchain/textsplitters": "^1.0.1", "@libsql/client": "^0.17.3", "@rdfjs/types": "^2.0.1" } }, "sha512-bP8qFa9y8x6MfGR7DOKX0Mtuz4G18jNQ8iscU3UuP9wUEHDgFM2mggCq5Fm4nyon3iXJpLuNjREfJRP0v2gxrQ=="],
 
     "@worlds/sdk": ["@jsr/worlds__sdk@0.2.0", "https://npm.jsr.io/~/11/@jsr/worlds__sdk/0.2.0.tgz", { "dependencies": { "@jsr/std__encoding": "^1.0.10", "@jsr/std__path": "^1.1.5", "@jsr/wazoo__sparql-engine": "^0.4.1", "@rdfjs/types": "^2.0.1", "@tensorflow/tfjs": "^4.22.0", "@tensorflow/tfjs-backend-wasm": "^4.22.0", "ai": "^6.0.195", "rdf-canonize": "^5.0.0" } }, "sha512-k0lpfr+mrHxJKmM8nxjHeO40szG+ASLXUoFXW1C+zg53cxezmS+Qo3i9r2+G+zWGsBgzt6fXwypxnipsm82K+A=="],
 

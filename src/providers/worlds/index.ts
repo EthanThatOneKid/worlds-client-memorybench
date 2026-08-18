@@ -2,7 +2,7 @@ import { mkdir, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { createClient } from "@libsql/client"
 import type { SdkInterface } from "@worlds/sdk"
-import { createLibsqlClient } from "@worlds/libsql"
+import { createLibsqlSdk } from "@worlds/libsql"
 import type {
   Provider,
   ProviderConfig,
@@ -105,12 +105,12 @@ export class WorldsProvider implements Provider {
         )
       : undefined
 
-    // createLibsqlClient wires the in-house WazooSparqlEngine over the
+    // createLibsqlSdk wires the in-house WazooSparqlEngine over the
     // hexastore-backed LibsqlStore automatically (the Comunica/traqula
     // closure silently broke every query in #23; the Wazoo engine is
     // W3C-gated 345/345 SPARQL 1.1, 249/249 SPARQL 1.2, 41/41 RDF 1.2
     // triple terms — see #25).
-    const client = await createLibsqlClient({
+    const client = await createLibsqlSdk({
       client: libsqlClient,
       embeddingService: cachedEmbeddingService,
       vectorDimensions: embeddingService ? 768 : undefined,
